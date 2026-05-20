@@ -44,6 +44,10 @@ class DeepSeekProvider(LLMProvider):
             kwargs["tools"] = tools
         response = await self._async_client.chat.completions.create(**kwargs)  # type: ignore[arg-type]
         choice = response.choices[0]
+        # Handle reasoning models: content may be empty, use reasoning_content
+        text = choice.message.content or ""
+        if not text and hasattr(choice.message, 'reasoning_content') and choice.message.reasoning_content:
+            text = "[思考]\n" + choice.message.reasoning_content
         tool_calls = []
         if choice.message.tool_calls:
             tool_calls = [
@@ -86,6 +90,10 @@ class DeepSeekProvider(LLMProvider):
             kwargs["tools"] = tools
         response = self._client.chat.completions.create(**kwargs)  # type: ignore[arg-type]
         choice = response.choices[0]
+        # Handle reasoning models
+        text = choice.message.content or ""
+        if not text and hasattr(choice.message, 'reasoning_content') and choice.message.reasoning_content:
+            text = "[思考]\n" + choice.message.reasoning_content
         tool_calls = []
         if choice.message.tool_calls:
             tool_calls = [
