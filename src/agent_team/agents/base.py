@@ -133,8 +133,8 @@ class BaseAgent:
                     # Execute tool
                     result = await self.tool_registry.execute(fn_name, fn_args)
                     
-                    # Add assistant message with tool_call
-                    self._conversation.append({
+                    # Add assistant message with tool_call (preserve reasoning_content for deepseek-v4)
+                    assistant_msg = {
                         "role": "assistant",
                         "content": response.text or "",
                         "tool_calls": [{
@@ -142,7 +142,10 @@ class BaseAgent:
                             "type": "function",
                             "function": {"name": fn_name, "arguments": tc["function"]["arguments"]},
                         }],
-                    })
+                    }
+                    if response.reasoning_content:
+                        assistant_msg["reasoning_content"] = response.reasoning_content
+                    self._conversation.append(assistant_msg)
                     # Add tool result
                     self._conversation.append({
                         "role": "tool",

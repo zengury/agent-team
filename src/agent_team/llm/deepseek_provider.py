@@ -66,6 +66,7 @@ class DeepSeekProvider(LLMProvider):
             },
             finish_reason=choice.finish_reason or "stop",
             tool_calls=tool_calls,
+            reasoning_content=getattr(choice.message, "reasoning_content", "") or "",
         )
 
     def chat_sync(
@@ -112,4 +113,5 @@ class DeepSeekProvider(LLMProvider):
             },
             finish_reason=choice.finish_reason or "stop",
             tool_calls=tool_calls,
+            reasoning_content=getattr(choice.message, "reasoning_content", "") or "",
         )

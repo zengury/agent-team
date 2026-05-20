@@ -13,7 +13,8 @@ class LLMResponse:
     model: str
     usage: dict = field(default_factory=dict)  # {"input_tokens": N, "output_tokens": N}
     finish_reason: str = "stop"
-    tool_calls: list = field(default_factory=list)  # OpenAI-format tool call responses
+    tool_calls: list = field(default_factory=list)
+    reasoning_content: str = ""  # For reasoning models (deepseek-v4-pro)
 
 
 class LLMProvider(ABC):

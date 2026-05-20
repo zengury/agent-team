@@ -1,108 +1,72 @@
 """
-数据库模型 - SweetLoaf 烘焙坊运营管理平台
-
-基于PRD需求，包含以下核心模型：
-1. Store - 门店管理
-2. Employee - 员工管理
-3. Product - 产品管理（成品）
-4. Ingredient - 原料管理
-5. Inventory - 库存记录
-6. Order - 订单管理
-7. Schedule - 排班管理
-8. Member - 会员管理
-9. SaleRecord - 销售记录
+SweetLoaf 面包店数字化管理系统 - 数据库模型
 """
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime, date, time
+from datetime import datetime, date, timedelta
+from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
 
 
 # ============================================================
-# 门店管理
+# 员工与用户模型
 # ============================================================
-class Store(db.Model):
-    """门店模型 - 对应SweetLoaf的三家门店"""
-    __tablename__ = 'stores'
+
+class User(db.Model):
+    """系统用户（员工）"""
+    __tablename__ = 'users'
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False, comment='门店名称')
-    location = db.Column(db.String(200), nullable=False, comment='门店地址/区域')
-    phone = db.Column(db.String(20), comment='门店电话')
-    is_active = db.Column(db.Boolean, default=True, comment='是否营业')
+    username = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(128), nullable=False)
+    display_name = db.Column(db.String(64), nullable=False)
+    role = db.Column(db.String(20), nullable=False, default='cashier')
+    # role: 'admin' (老板), 'manager' (店长), 'cashier' (收银员), 'baker' (师傅), 'driver' (司机)
+    store_code = db.Column(db.String(20), nullable=True)  # 所属门店
+    phone = db.Column(db.String(20), nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # 关联
-    employees = db.relationship('Employee', backref='store', lazy='dynamic')
-    inventories = db.relationship('Inventory', backref='store', lazy='dynamic')
-    orders = db.relationship('Order', backref='store', lazy='dynamic')
-    schedules = db.relationship('Schedule', backref='store', lazy='dynamic')
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
 
     def to_dict(self):
         return {
             'id': self.id,
-            'name': self.name,
-            'location': self.location,
-            'phone': self.phone,
-            'is_active': self.is_active,
-            'created_at': self.created_at.isoformat() if self.created_at else None
-        }
-
-
-# ============================================================
-# 员工管理
-# ============================================================
-class Employee(db.Model):
-    """员工模型 - 12名员工信息"""
-    __tablename__ = 'employees'
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), nullable=False, comment='员工姓名')
-    phone = db.Column(db.String(20), comment='联系电话')
-    role = db.Column(db.String(50), nullable=False, comment='岗位：烘焙师/店员/店长')
-    store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=False, comment='所属门店')
-    is_active = db.Column(db.Boolean, default=True, comment='在职状态')
-    hire_date = db.Column(db.Date, default=date.today, comment='入职日期')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    # 关联
-    schedules = db.relationship('Schedule', backref='employee', lazy='dynamic')
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'phone': self.phone,
+            'username': self.username,
+            'display_name': self.display_name,
             'role': self.role,
-            'store_id': self.store_id,
-            'store_name': self.store.name if self.store else None,
+            'store_code': self.store_code,
+            'phone': self.phone,
             'is_active': self.is_active,
-            'hire_date': self.hire_date.isoformat() if self.hire_date else None
         }
 
 
 # ============================================================
-# 产品管理（成品）
+# 产品与库存模型
 # ============================================================
+
 class Product(db.Model):
-    """产品模型 - 面包、蛋糕、饼干等成品"""
+    """产品（面包/糕点/饮品）"""
     __tablename__ = 'products'
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False, comment='产品名称')
-    category = db.Column(db.String(50), nullable=False, comment='分类：面包/蛋糕/饼干')
-    price = db.Column(db.Float, nullable=False, default=0.0, comment='售价')
-    cost = db.Column(db.Float, default=0.0, comment='成本')
-    is_signature = db.Column(db.Boolean, default=False, comment='是否招牌产品')
-    is_limited = db.Column(db.Boolean, default=False, comment='是否限量供应')
-    description = db.Column(db.Text, comment='产品描述')
-    image_url = db.Column(db.String(200), comment='产品图片URL')
-    is_active = db.Column(db.Boolean, default=True, comment='是否在售')
+    name = db.Column(db.String(100), nullable=False)
+    category = db.Column(db.String(50), nullable=False, default='面包')
+    # category: '面包', '蛋糕', '饮品', '其他'
+    price = db.Column(db.Float, nullable=False, default=0.0)
+    cost = db.Column(db.Float, nullable=True, default=0.0)  # 成本
+    unit = db.Column(db.String(20), default='个')
+    is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # 关联
-    inventories = db.relationship('Inventory', backref='product', lazy='dynamic')
-    order_items = db.relationship('OrderItem', backref='product', lazy='dynamic')
+    # 库存关系
+    stocks = db.relationship('Stock', backref='product', lazy='dynamic')
+    # 配方关系
+    recipes = db.relationship('Recipe', backref='product', lazy='dynamic')
 
     def to_dict(self):
         return {
@@ -111,371 +75,385 @@ class Product(db.Model):
             'category': self.category,
             'price': self.price,
             'cost': self.cost,
-            'is_signature': self.is_signature,
-            'is_limited': self.is_limited,
-            'description': self.description,
-            'is_active': self.is_active
+            'unit': self.unit,
+            'is_active': self.is_active,
         }
 
 
-# ============================================================
-# 原料管理
-# ============================================================
-class Ingredient(db.Model):
-    """原料模型 - 面粉、黄油、奶油芝士等"""
-    __tablename__ = 'ingredients'
+class RawMaterial(db.Model):
+    """原材料"""
+    __tablename__ = 'raw_materials'
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False, comment='原料名称')
-    unit = db.Column(db.String(20), nullable=False, default='kg', comment='单位：kg/g/L/个')
-    unit_price = db.Column(db.Float, default=0.0, comment='单价')
-    safety_stock = db.Column(db.Float, default=0.0, comment='安全库存量')
-    supplier = db.Column(db.String(100), comment='常用供应商')
+    name = db.Column(db.String(100), nullable=False)
+    unit = db.Column(db.String(20), default='公斤')
+    min_stock = db.Column(db.Float, default=0.0)  # 最低库存预警
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # 关联
-    inventories = db.relationship('Inventory', backref='ingredient', lazy='dynamic')
+    stocks = db.relationship('RawMaterialStock', backref='material', lazy='dynamic')
+    recipes = db.relationship('Recipe', backref='material', lazy='dynamic')
 
     def to_dict(self):
         return {
             'id': self.id,
             'name': self.name,
             'unit': self.unit,
-            'unit_price': self.unit_price,
-            'safety_stock': self.safety_stock,
-            'supplier': self.supplier,
-            'is_active': self.is_active
+            'min_stock': self.min_stock,
+            'is_active': self.is_active,
         }
 
 
-# ============================================================
-# 库存记录
-# ============================================================
-class Inventory(db.Model):
-    """库存模型 - 记录每家店的原料和成品库存"""
-    __tablename__ = 'inventories'
+class Recipe(db.Model):
+    """产品配方（生产一个产品需要消耗的原材料）"""
+    __tablename__ = 'recipes'
 
     id = db.Column(db.Integer, primary_key=True)
-    store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=False)
-    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=True, comment='成品ID')
-    ingredient_id = db.Column(db.Integer, db.ForeignKey('ingredients.id'), nullable=True, comment='原料ID')
-    quantity = db.Column(db.Float, nullable=False, default=0.0, comment='当前库存数量')
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    def to_dict(self):
-        result = {
-            'id': self.id,
-            'store_id': self.store_id,
-            'store_name': self.store.name if self.store else None,
-            'quantity': self.quantity,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
-        }
-        if self.product:
-            result['product_id'] = self.product.id
-            result['product_name'] = self.product.name
-            result['item_type'] = 'product'
-        if self.ingredient:
-            result['ingredient_id'] = self.ingredient.id
-            result['ingredient_name'] = self.ingredient.name
-            result['item_type'] = 'ingredient'
-        return result
-
-
-# ============================================================
-# 库存变动记录（入库/出库/报废）
-# ============================================================
-class InventoryTransaction(db.Model):
-    """库存变动记录 - 入库、出库、报废等操作"""
-    __tablename__ = 'inventory_transactions'
-
-    id = db.Column(db.Integer, primary_key=True)
-    store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=False)
-    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=True)
-    ingredient_id = db.Column(db.Integer, db.ForeignKey('ingredients.id'), nullable=True)
-    transaction_type = db.Column(db.String(20), nullable=False, comment='类型：in/out/waste')
-    quantity = db.Column(db.Float, nullable=False, comment='变动数量')
-    reason = db.Column(db.String(200), comment='原因说明（如：报废原因）')
-    operator = db.Column(db.String(50), comment='操作人')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    store = db.relationship('Store', backref='inventory_transactions')
-    product = db.relationship('Product', backref='inventory_transactions')
-    ingredient = db.relationship('Ingredient', backref='inventory_transactions')
-
-    def to_dict(self):
-        result = {
-            'id': self.id,
-            'store_id': self.store_id,
-            'store_name': self.store.name if self.store else None,
-            'transaction_type': self.transaction_type,
-            'quantity': self.quantity,
-            'reason': self.reason,
-            'operator': self.operator,
-            'created_at': self.created_at.isoformat() if self.created_at else None
-        }
-        if self.product:
-            result['product_id'] = self.product.id
-            result['product_name'] = self.product.name
-            result['item_type'] = 'product'
-        if self.ingredient:
-            result['ingredient_id'] = self.ingredient.id
-            result['ingredient_name'] = self.ingredient.name
-            result['item_type'] = 'ingredient'
-        return result
-
-
-# ============================================================
-# 订单管理
-# ============================================================
-class Order(db.Model):
-    """订单模型 - 预订订单（生日蛋糕、团购等）"""
-    __tablename__ = 'orders'
-
-    id = db.Column(db.Integer, primary_key=True)
-    order_no = db.Column(db.String(50), unique=True, nullable=False, comment='订单编号')
-    store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=False, comment='取货门店')
-    customer_name = db.Column(db.String(100), nullable=False, comment='客户姓名')
-    customer_phone = db.Column(db.String(20), comment='客户电话')
-    channel = db.Column(db.String(20), default='phone', comment='订单渠道：phone/line/store')
-    status = db.Column(
-        db.String(20), default='pending',
-        comment='状态：pending/confirmed/production/completed/cancelled'
-    )
-    total_amount = db.Column(db.Float, default=0.0, comment='订单总金额')
-    pickup_date = db.Column(db.Date, nullable=False, comment='取货日期')
-    pickup_time = db.Column(db.String(20), comment='取货时间段')
-    notes = db.Column(db.Text, comment='备注')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # 关联
-    items = db.relationship('OrderItem', backref='order', lazy='dynamic',
-                            cascade='all, delete-orphan')
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'order_no': self.order_no,
-            'store_id': self.store_id,
-            'store_name': self.store.name if self.store else None,
-            'customer_name': self.customer_name,
-            'customer_phone': self.customer_phone,
-            'channel': self.channel,
-            'status': self.status,
-            'total_amount': self.total_amount,
-            'pickup_date': self.pickup_date.isoformat() if self.pickup_date else None,
-            'pickup_time': self.pickup_time,
-            'notes': self.notes,
-            'items': [item.to_dict() for item in self.items.all()],
-            'created_at': self.created_at.isoformat() if self.created_at else None
-        }
-
-
-class OrderItem(db.Model):
-    """订单明细"""
-    __tablename__ = 'order_items'
-
-    id = db.Column(db.Integer, primary_key=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
-    quantity = db.Column(db.Integer, nullable=False, default=1)
-    unit_price = db.Column(db.Float, default=0.0)
-    subtotal = db.Column(db.Float, default=0.0)
+    material_id = db.Column(db.Integer, db.ForeignKey('raw_materials.id'), nullable=False)
+    quantity = db.Column(db.Float, nullable=False, default=0.0)  # 消耗量
 
     def to_dict(self):
         return {
             'id': self.id,
             'product_id': self.product_id,
-            'product_name': self.product.name if self.product else None,
+            'material_id': self.material_id,
+            'material_name': self.material.name if self.material else '',
             'quantity': self.quantity,
-            'unit_price': self.unit_price,
-            'subtotal': self.subtotal
+        }
+
+
+class Stock(db.Model):
+    """成品库存（按门店）"""
+    __tablename__ = 'stocks'
+
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    store_code = db.Column(db.String(20), nullable=False, default='main')
+    quantity = db.Column(db.Float, nullable=False, default=0.0)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'product_id': self.product_id,
+            'product_name': self.product.name if self.product else '',
+            'store_code': self.store_code,
+            'quantity': self.quantity,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class RawMaterialStock(db.Model):
+    """原材料库存（按门店）"""
+    __tablename__ = 'raw_material_stocks'
+
+    id = db.Column(db.Integer, primary_key=True)
+    material_id = db.Column(db.Integer, db.ForeignKey('raw_materials.id'), nullable=False)
+    store_code = db.Column(db.String(20), nullable=False, default='main')
+    quantity = db.Column(db.Float, nullable=False, default=0.0)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'material_id': self.material_id,
+            'material_name': self.material.name if self.material else '',
+            'store_code': self.store_code,
+            'quantity': self.quantity,
         }
 
 
 # ============================================================
-# 员工排班
+# 交易与流水模型
 # ============================================================
-class Schedule(db.Model):
-    """排班模型"""
-    __tablename__ = 'schedules'
+
+class Sale(db.Model):
+    """销售记录"""
+    __tablename__ = 'sales'
 
     id = db.Column(db.Integer, primary_key=True)
-    employee_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=False)
-    store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=False)
-    work_date = db.Column(db.Date, nullable=False, comment='工作日期')
-    start_time = db.Column(db.String(10), nullable=False, comment='上班时间，如 08:00')
-    end_time = db.Column(db.String(10), nullable=False, comment='下班时间，如 17:00')
-    status = db.Column(db.String(20), default='scheduled',
-                       comment='状态：scheduled/confirmed/completed/absent')
-    notes = db.Column(db.String(200), comment='备注（如调班说明）')
+    store_code = db.Column(db.String(20), nullable=False)
+    total_amount = db.Column(db.Float, nullable=False, default=0.0)
+    discount_amount = db.Column(db.Float, default=0.0)
+    final_amount = db.Column(db.Float, nullable=False, default=0.0)
+    payment_method = db.Column(db.String(20), default='现金')
+    member_id = db.Column(db.Integer, db.ForeignKey('members.id'), nullable=True)
+    cashier_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    items = db.relationship('SaleItem', backref='sale', lazy='dynamic')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'store_code': self.store_code,
+            'total_amount': self.total_amount,
+            'discount_amount': self.discount_amount,
+            'final_amount': self.final_amount,
+            'payment_method': self.payment_method,
+            'member_id': self.member_id,
+            'cashier_id': self.cashier_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'items': [item.to_dict() for item in self.items.all()],
+        }
+
+
+class SaleItem(db.Model):
+    """销售明细"""
+    __tablename__ = 'sale_items'
+
+    id = db.Column(db.Integer, primary_key=True)
+    sale_id = db.Column(db.Integer, db.ForeignKey('sales.id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    quantity = db.Column(db.Float, nullable=False, default=1)
+    unit_price = db.Column(db.Float, nullable=False)
+    subtotal = db.Column(db.Float, nullable=False)
+
+    product = db.relationship('Product')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'sale_id': self.sale_id,
+            'product_id': self.product_id,
+            'product_name': self.product.name if self.product else '',
+            'quantity': self.quantity,
+            'unit_price': self.unit_price,
+            'subtotal': self.subtotal,
+        }
+
+
+class InventoryTransaction(db.Model):
+    """库存变动记录（入库、出库、调拨、生产消耗）"""
+    __tablename__ = 'inventory_transactions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    transaction_type = db.Column(db.String(20), nullable=False)
+    # 'purchase' 采购入库, 'production_in' 生产入库, 'production_consume' 生产消耗
+    # 'transfer_out' 调拨出库, 'transfer_in' 调拨入库, 'sale' 销售出库, 'waste' 报损
+    item_type = db.Column(db.String(20), nullable=False)  # 'product' 或 'material'
+    item_id = db.Column(db.Integer, nullable=False)
+    store_code = db.Column(db.String(20), nullable=False)
+    quantity = db.Column(db.Float, nullable=False)
+    unit_price = db.Column(db.Float, nullable=True)
+    reference_id = db.Column(db.Integer, nullable=True)  # 关联单据ID
+    note = db.Column(db.String(200), nullable=True)
+    operator_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
         return {
             'id': self.id,
-            'employee_id': self.employee_id,
-            'employee_name': self.employee.name if self.employee else None,
-            'store_id': self.store_id,
-            'store_name': self.store.name if self.store else None,
-            'work_date': self.work_date.isoformat() if self.work_date else None,
-            'start_time': self.start_time,
-            'end_time': self.end_time,
-            'status': self.status,
-            'notes': self.notes
+            'transaction_type': self.transaction_type,
+            'item_type': self.item_type,
+            'item_id': self.item_id,
+            'store_code': self.store_code,
+            'quantity': self.quantity,
+            'unit_price': self.unit_price,
+            'reference_id': self.reference_id,
+            'note': self.note,
+            'operator_id': self.operator_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 
 
-# ============================================================
-# 调班/请假申请
-# ============================================================
-class ShiftRequest(db.Model):
-    """调班/请假申请"""
-    __tablename__ = 'shift_requests'
+class TransferOrder(db.Model):
+    """调拨单"""
+    __tablename__ = 'transfer_orders'
 
     id = db.Column(db.Integer, primary_key=True)
-    employee_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=False)
-    request_type = db.Column(db.String(20), nullable=False, comment='类型：swap/leave')
-    target_date = db.Column(db.Date, nullable=False, comment='目标日期')
-    reason = db.Column(db.String(200), comment='原因')
-    swap_with_employee_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=True,
-                                      comment='调班对象')
-    status = db.Column(db.String(20), default='pending',
-                       comment='状态：pending/approved/rejected')
-    approved_by = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=True,
-                            comment='审批人')
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    quantity = db.Column(db.Float, nullable=False)
+    from_store = db.Column(db.String(20), nullable=False)
+    to_store = db.Column(db.String(20), nullable=False)
+    status = db.Column(db.String(20), default='pending')
+    # 'pending' 待审批, 'approved' 已审批, 'picked' 已取货, 'delivered' 已送达, 'cancelled' 已取消
+    requester_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    approver_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    driver_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    note = db.Column(db.String(200), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    employee = db.relationship('Employee', foreign_keys=[employee_id],
-                               backref='shift_requests')
-    swap_with = db.relationship('Employee', foreign_keys=[swap_with_employee_id])
-    approver = db.relationship('Employee', foreign_keys=[approved_by])
+    product = db.relationship('Product')
 
     def to_dict(self):
         return {
             'id': self.id,
-            'employee_id': self.employee_id,
-            'employee_name': self.employee.name if self.employee else None,
-            'request_type': self.request_type,
-            'target_date': self.target_date.isoformat() if self.target_date else None,
-            'reason': self.reason,
-            'swap_with_employee_id': self.swap_with_employee_id,
-            'swap_with_name': self.swap_with.name if self.swap_with else None,
+            'product_id': self.product_id,
+            'product_name': self.product.name if self.product else '',
+            'quantity': self.quantity,
+            'from_store': self.from_store,
+            'to_store': self.to_store,
             'status': self.status,
-            'approved_by': self.approved_by
+            'requester_id': self.requester_id,
+            'approver_id': self.approver_id,
+            'driver_id': self.driver_id,
+            'note': self.note,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
 
 
 # ============================================================
-# 会员管理
+# 会员模型
 # ============================================================
+
 class Member(db.Model):
-    """会员模型"""
+    """会员"""
     __tablename__ = 'members'
 
     id = db.Column(db.Integer, primary_key=True)
-    phone = db.Column(db.String(20), unique=True, nullable=False, comment='手机号（唯一标识）')
-    name = db.Column(db.String(50), comment='会员姓名')
-    gender = db.Column(db.String(10), comment='性别')
-    birthday = db.Column(db.Date, comment='生日')
-    total_spent = db.Column(db.Float, default=0.0, comment='累计消费金额')
-    points = db.Column(db.Integer, default=0, comment='积分')
-    level = db.Column(db.String(20), default='regular', comment='等级：regular/silver/gold')
-    tags = db.Column(db.String(200), comment='标签，逗号分隔')
+    phone = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(64), nullable=True)
+    level = db.Column(db.String(20), default='普通')
+    points = db.Column(db.Integer, default=0)
+    total_spent = db.Column(db.Float, default=0.0)
+    birthday = db.Column(db.Date, nullable=True)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_visit_at = db.Column(db.DateTime, nullable=True)
 
-    # 关联
-    sale_records = db.relationship('SaleRecord', backref='member', lazy='dynamic')
+    sales = db.relationship('Sale', backref='member', lazy='dynamic')
+    points_logs = db.relationship('PointsLog', backref='member', lazy='dynamic')
+
+    def calculate_level(self):
+        """根据积分重新计算会员等级"""
+        from src.config import Config
+        levels = Config.MEMBER_LEVELS
+        current_level = '普通'
+        for level_name, level_info in sorted(levels.items(),
+                                              key=lambda x: x[1]['min_points'],
+                                              reverse=True):
+            if self.points >= level_info['min_points']:
+                current_level = level_name
+                break
+        self.level = current_level
+        return current_level
 
     def to_dict(self):
         return {
             'id': self.id,
             'phone': self.phone,
             'name': self.name,
-            'gender': self.gender,
-            'birthday': self.birthday.isoformat() if self.birthday else None,
-            'total_spent': self.total_spent,
-            'points': self.points,
             'level': self.level,
-            'tags': self.tags.split(',') if self.tags else [],
-            'is_active': self.is_active
+            'points': self.points,
+            'total_spent': self.total_spent,
+            'birthday': self.birthday.isoformat() if self.birthday else None,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'last_visit_at': self.last_visit_at.isoformat() if self.last_visit_at else None,
         }
 
 
-# ============================================================
-# 销售记录
-# ============================================================
-class SaleRecord(db.Model):
-    """销售记录 - 每日销售数据"""
-    __tablename__ = 'sale_records'
+class PointsLog(db.Model):
+    """积分变动记录"""
+    __tablename__ = 'points_logs'
 
     id = db.Column(db.Integer, primary_key=True)
-    store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=False)
-    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
-    member_id = db.Column(db.Integer, db.ForeignKey('members.id'), nullable=True)
-    quantity = db.Column(db.Integer, nullable=False, default=1)
-    unit_price = db.Column(db.Float, nullable=False)
-    total_amount = db.Column(db.Float, nullable=False)
-    sale_date = db.Column(db.Date, nullable=False, default=date.today)
-    sale_time = db.Column(db.String(10), comment='销售时间 HH:MM')
+    member_id = db.Column(db.Integer, db.ForeignKey('members.id'), nullable=False)
+    points_change = db.Column(db.Integer, nullable=False)  # 正数为增加，负数为消耗
+    reason = db.Column(db.String(100), nullable=False)  # 'purchase', 'exchange', 'adjust'
+    reference_id = db.Column(db.Integer, nullable=True)  # 关联销售单ID
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    store = db.relationship('Store', backref='sale_records')
-    product = db.relationship('Product', backref='sale_records')
 
     def to_dict(self):
         return {
             'id': self.id,
-            'store_id': self.store_id,
-            'store_name': self.store.name if self.store else None,
-            'product_id': self.product_id,
-            'product_name': self.product.name if self.product else None,
             'member_id': self.member_id,
-            'member_name': self.member.name if self.member else None,
-            'quantity': self.quantity,
-            'unit_price': self.unit_price,
-            'total_amount': self.total_amount,
-            'sale_date': self.sale_date.isoformat() if self.sale_date else None,
-            'sale_time': self.sale_time
+            'points_change': self.points_change,
+            'reason': self.reason,
+            'reference_id': self.reference_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 
 
 # ============================================================
-# 生产记录
+# 营销工具模型
 # ============================================================
-class ProductionRecord(db.Model):
-    """生产记录 - 每日生产情况"""
-    __tablename__ = 'production_records'
+
+class Coupon(db.Model):
+    """优惠券"""
+    __tablename__ = 'coupons'
 
     id = db.Column(db.Integer, primary_key=True)
-    store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=False)
-    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
-    planned_quantity = db.Column(db.Integer, default=0, comment='计划生产数量')
-    actual_quantity = db.Column(db.Integer, default=0, comment='实际生产数量')
-    waste_quantity = db.Column(db.Integer, default=0, comment='报废数量')
-    waste_reason = db.Column(db.String(100), comment='报废原因')
-    production_date = db.Column(db.Date, nullable=False, default=date.today)
-    operator = db.Column(db.String(50), comment='操作人')
+    name = db.Column(db.String(100), nullable=False)
+    coupon_type = db.Column(db.String(20), nullable=False)
+    # 'discount' 折扣券, 'cash' 满减券
+    condition_amount = db.Column(db.Float, nullable=True)  # 满多少元可用
+    value = db.Column(db.Float, nullable=False)  # 折扣率(0.9)或减免金额(15)
+    is_active = db.Column(db.Boolean, default=True)
+    start_date = db.Column(db.DateTime, nullable=True)
+    end_date = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    store = db.relationship('Store', backref='production_records')
-    product = db.relationship('Product', backref='production_records')
 
     def to_dict(self):
         return {
             'id': self.id,
-            'store_id': self.store_id,
-            'store_name': self.store.name if self.store else None,
+            'name': self.name,
+            'coupon_type': self.coupon_type,
+            'condition_amount': self.condition_amount,
+            'value': self.value,
+            'is_active': self.is_active,
+            'start_date': self.start_date.isoformat() if self.start_date else None,
+            'end_date': self.end_date.isoformat() if self.end_date else None,
+        }
+
+
+class MemberCoupon(db.Model):
+    """会员领取的优惠券"""
+    __tablename__ = 'member_coupons'
+
+    id = db.Column(db.Integer, primary_key=True)
+    member_id = db.Column(db.Integer, db.ForeignKey('members.id'), nullable=False)
+    coupon_id = db.Column(db.Integer, db.ForeignKey('coupons.id'), nullable=False)
+    is_used = db.Column(db.Boolean, default=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+    sale_id = db.Column(db.Integer, db.ForeignKey('sales.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    coupon = db.relationship('Coupon')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'member_id': self.member_id,
+            'coupon_id': self.coupon_id,
+            'coupon_name': self.coupon.name if self.coupon else '',
+            'is_used': self.is_used,
+            'used_at': self.used_at.isoformat() if self.used_at else None,
+            'sale_id': self.sale_id,
+        }
+
+
+# ============================================================
+# 生产建议模型
+# ============================================================
+
+class ProductionSuggestion(db.Model):
+    """生产建议"""
+    __tablename__ = 'production_suggestions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    suggested_date = db.Column(db.Date, nullable=False)
+    suggested_quantity = db.Column(db.Float, nullable=False)
+    actual_quantity = db.Column(db.Float, nullable=True)  # 师傅实际调整后的数量
+    reason = db.Column(db.String(200), nullable=True)  # 建议依据
+    is_adjusted = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    product = db.relationship('Product')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
             'product_id': self.product_id,
-            'product_name': self.product.name if self.product else None,
-            'planned_quantity': self.planned_quantity,
+            'product_name': self.product.name if self.product else '',
+            'suggested_date': self.suggested_date.isoformat() if self.suggested_date else None,
+            'suggested_quantity': self.suggested_quantity,
             'actual_quantity': self.actual_quantity,
-            'waste_quantity': self.waste_quantity,
-            'waste_reason': self.waste_reason,
-            'production_date': self.production_date.isoformat() if self.production_date else None,
-            'operator': self.operator
+            'reason': self.reason,
+            'is_adjusted': self.is_adjusted,
         }

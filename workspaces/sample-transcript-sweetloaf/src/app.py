@@ -1,59 +1,35 @@
 """
-SweetLoaf 烘焙坊运营管理平台 - Flask主入口
-
-基于PRD需求，提供以下API路由：
-1. 门店管理 API
-2. 员工管理 API
-3. 产品管理 API
-4. 原料管理 API
-5. 库存管理 API
-6. 订单管理 API
-7. 排班管理 API
-8. 会员管理 API
-9. 数据看板 API
+SweetLoaf 面包店数字化管理系统 - Flask主入口
 """
 import os
 import sys
 from datetime import datetime, date, timedelta
-from functools import wraps
-
 from flask import Flask, request, jsonify, render_template_string
 
-# 确保能找到src包
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# 确保能正确导入src包
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import config
-from models import db, Store, Employee, Product, Ingredient, Inventory
-from models import InventoryTransaction, Order, OrderItem, Schedule
-from models import ShiftRequest, Member, SaleRecord, ProductionRecord
+from src.config import config
+from src.models import (
+    db, User, Product, RawMaterial, Recipe, Stock, RawMaterialStock,
+    Sale, SaleItem, InventoryTransaction, TransferOrder,
+    Member, PointsLog, Coupon, MemberCoupon, ProductionSuggestion
+)
 
 
 def create_app(config_name=None):
     """应用工厂"""
     if config_name is None:
-        config_name = os.environ.get('FLASK_ENV', 'default')
+        config_name = os.environ.get('FLASK_CONFIG', 'default')
 
     app = Flask(__name__)
-    app.config.from_object(config.get(config_name, config['default']))
+    app.config.from_object(config[config_name])
+    config[config_name].init_app(app)
 
     db.init_app(app)
 
     # 注册路由
     register_routes(app)
-
-    # 创建数据库表
-    with app.app_context():
-        db.create_all()
-        # 初始化种子数据
-        _init_seed_data()
-
-
-    # ── Dashboard UI ──
-    @app.route("/dashboard")
-    def dashboard():
-        from flask import send_from_directory
-        import os
-        return send_from_directory(os.path.join(app.root_path, ".."), "dashboard.html")
 
     return app
 
@@ -62,868 +38,1107 @@ def register_routes(app):
     """注册所有路由"""
 
     # ============================================================
-    # 首页 - API文档
+    # 首页 / 状态检查
     # ============================================================
     @app.route('/')
     def index():
         return jsonify({
-            'name': 'SweetLoaf 烘焙坊运营管理平台',
+            'app': 'SweetLoaf 面包店数字化管理系统',
             'version': '1.0.0',
             'status': 'running',
-            'endpoints': {
-                'stores': '/api/stores',
-                'employees': '/api/employees',
-                'products': '/api/products',
-                'ingredients': '/api/ingredients',
-                'inventory': '/api/inventory',
-                'orders': '/api/orders',
-                'schedules': '/api/schedules',
-                'members': '/api/members',
-                'dashboard': '/api/dashboard'
-            }
+            'timestamp': datetime.utcnow().isoformat(),
         })
 
-    # ============================================================
-    # 门店管理 API
-    # ============================================================
-    @app.route('/api/stores', methods=['GET'])
-    def get_stores():
-        """获取所有门店"""
-        stores = Store.query.all()
-        return jsonify({'code': 0, 'data': [s.to_dict() for s in stores]})
-
-    @app.route('/api/stores', methods=['POST'])
-    def create_store():
-        """创建门店"""
-        data = request.get_json()
-        if not data or not data.get('name'):
-            return jsonify({'code': 1, 'message': '门店名称不能为空'}), 400
-        store = Store(
-            name=data['name'],
-            location=data.get('location', ''),
-            phone=data.get('phone', '')
-        )
-        db.session.add(store)
-        db.session.commit()
-        return jsonify({'code': 0, 'data': store.to_dict(), 'message': '创建成功'}), 201
-
-    @app.route('/api/stores/<int:store_id>', methods=['GET'])
-    def get_store(store_id):
-        """获取单个门店"""
-        store = Store.query.get_or_404(store_id)
-        return jsonify({'code': 0, 'data': store.to_dict()})
+    @app.route('/health')
+    def health():
+        return jsonify({'status': 'ok'})
 
     # ============================================================
     # 员工管理 API
     # ============================================================
-    @app.route('/api/employees', methods=['GET'])
-    def get_employees():
-        """获取所有员工"""
-        store_id = request.args.get('store_id', type=int)
-        query = Employee.query
-        if store_id:
-            query = query.filter_by(store_id=store_id)
-        employees = query.all()
-        return jsonify({'code': 0, 'data': [e.to_dict() for e in employees]})
+    @app.route('/api/users', methods=['GET'])
+    def list_users():
+        users = User.query.all()
+        return jsonify([u.to_dict() for u in users])
 
-    @app.route('/api/employees', methods=['POST'])
-    def create_employee():
-        """创建员工"""
+    @app.route('/api/users', methods=['POST'])
+    def create_user():
         data = request.get_json()
-        required = ['name', 'role', 'store_id']
-        if not data or not all(k in data for k in required):
-            return jsonify({'code': 1, 'message': '缺少必填字段'}), 400
-        employee = Employee(
-            name=data['name'],
-            phone=data.get('phone', ''),
-            role=data['role'],
-            store_id=data['store_id']
+        if not data or not data.get('username'):
+            return jsonify({'error': '用户名不能为空'}), 400
+        if User.query.filter_by(username=data['username']).first():
+            return jsonify({'error': '用户名已存在'}), 400
+
+        user = User(
+            username=data['username'],
+            display_name=data.get('display_name', data['username']),
+            role=data.get('role', 'cashier'),
+            store_code=data.get('store_code'),
+            phone=data.get('phone'),
         )
-        db.session.add(employee)
+        user.set_password(data.get('password', '123456'))
+        db.session.add(user)
         db.session.commit()
-        return jsonify({'code': 0, 'data': employee.to_dict(), 'message': '创建成功'}), 201
+        return jsonify(user.to_dict()), 201
 
     # ============================================================
     # 产品管理 API
     # ============================================================
     @app.route('/api/products', methods=['GET'])
-    def get_products():
-        """获取所有产品"""
-        category = request.args.get('category')
-        query = Product.query
-        if category:
-            query = query.filter_by(category=category)
-        products = query.all()
-        return jsonify({'code': 0, 'data': [p.to_dict() for p in products]})
+    def list_products():
+        products = Product.query.filter_by(is_active=True).all()
+        return jsonify([p.to_dict() for p in products])
 
     @app.route('/api/products', methods=['POST'])
     def create_product():
-        """创建产品"""
         data = request.get_json()
-        required = ['name', 'category', 'price']
-        if not data or not all(k in data for k in required):
-            return jsonify({'code': 1, 'message': '缺少必填字段'}), 400
+        if not data or not data.get('name'):
+            return jsonify({'error': '产品名称不能为空'}), 400
+
         product = Product(
             name=data['name'],
-            category=data['category'],
-            price=data['price'],
+            category=data.get('category', '面包'),
+            price=data.get('price', 0.0),
             cost=data.get('cost', 0.0),
-            is_signature=data.get('is_signature', False),
-            is_limited=data.get('is_limited', False),
-            description=data.get('description', '')
+            unit=data.get('unit', '个'),
         )
         db.session.add(product)
         db.session.commit()
-        return jsonify({'code': 0, 'data': product.to_dict(), 'message': '创建成功'}), 201
 
-    # ============================================================
-    # 原料管理 API
-    # ============================================================
-    @app.route('/api/ingredients', methods=['GET'])
-    def get_ingredients():
-        """获取所有原料"""
-        ingredients = Ingredient.query.all()
-        return jsonify({'code': 0, 'data': [i.to_dict() for i in ingredients]})
-
-    @app.route('/api/ingredients', methods=['POST'])
-    def create_ingredient():
-        """创建原料"""
-        data = request.get_json()
-        required = ['name', 'unit']
-        if not data or not all(k in data for k in required):
-            return jsonify({'code': 1, 'message': '缺少必填字段'}), 400
-        ingredient = Ingredient(
-            name=data['name'],
-            unit=data['unit'],
-            unit_price=data.get('unit_price', 0.0),
-            safety_stock=data.get('safety_stock', 0.0),
-            supplier=data.get('supplier', '')
-        )
-        db.session.add(ingredient)
+        # 为所有门店初始化库存为0
+        from src.config import Config
+        for store_code in Config.STORES:
+            stock = Stock(product_id=product.id, store_code=store_code, quantity=0)
+            db.session.add(stock)
         db.session.commit()
-        return jsonify({'code': 0, 'data': ingredient.to_dict(), 'message': '创建成功'}), 201
+
+        return jsonify(product.to_dict()), 201
+
+    # ============================================================
+    # 原材料管理 API
+    # ============================================================
+    @app.route('/api/materials', methods=['GET'])
+    def list_materials():
+        materials = RawMaterial.query.filter_by(is_active=True).all()
+        return jsonify([m.to_dict() for m in materials])
+
+    @app.route('/api/materials', methods=['POST'])
+    def create_material():
+        data = request.get_json()
+        if not data or not data.get('name'):
+            return jsonify({'error': '原材料名称不能为空'}), 400
+
+        material = RawMaterial(
+            name=data['name'],
+            unit=data.get('unit', '公斤'),
+            min_stock=data.get('min_stock', 0.0),
+        )
+        db.session.add(material)
+        db.session.commit()
+
+        # 为所有门店初始化库存为0
+        from src.config import Config
+        for store_code in Config.STORES:
+            stock = RawMaterialStock(material_id=material.id, store_code=store_code, quantity=0)
+            db.session.add(stock)
+        db.session.commit()
+
+        return jsonify(material.to_dict()), 201
+
+    # ============================================================
+    # 配方管理 API
+    # ============================================================
+    @app.route('/api/recipes', methods=['GET'])
+    def list_recipes():
+        product_id = request.args.get('product_id', type=int)
+        query = Recipe.query
+        if product_id:
+            query = query.filter_by(product_id=product_id)
+        recipes = query.all()
+        return jsonify([r.to_dict() for r in recipes])
+
+    @app.route('/api/recipes', methods=['POST'])
+    def create_recipe():
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': '数据不能为空'}), 400
+
+        recipe = Recipe(
+            product_id=data['product_id'],
+            material_id=data['material_id'],
+            quantity=data.get('quantity', 0.0),
+        )
+        db.session.add(recipe)
+        db.session.commit()
+        return jsonify(recipe.to_dict()), 201
 
     # ============================================================
     # 库存管理 API
     # ============================================================
-    @app.route('/api/inventory', methods=['GET'])
-    def get_inventory():
-        """获取库存看板 - 支持按门店筛选"""
-        store_id = request.args.get('store_id', type=int)
-        item_type = request.args.get('type')  # product 或 ingredient
+    @app.route('/api/stocks', methods=['GET'])
+    def list_stocks():
+        store_code = request.args.get('store_code')
+        product_id = request.args.get('product_id', type=int)
+        query = Stock.query
+        if store_code:
+            query = query.filter_by(store_code=store_code)
+        if product_id:
+            query = query.filter_by(product_id=product_id)
+        stocks = query.all()
+        result = []
+        for s in stocks:
+            d = s.to_dict()
+            # 检查是否需要预警
+            from src.config import Config
+            if s.quantity < Config.STOCK_ALERT_THRESHOLD:
+                d['alert'] = True
+            else:
+                d['alert'] = False
+            result.append(d)
+        return jsonify(result)
 
-        query = Inventory.query
-        if store_id:
-            query = query.filter_by(store_id=store_id)
-        inventories = query.all()
+    @app.route('/api/materials/stocks', methods=['GET'])
+    def list_material_stocks():
+        store_code = request.args.get('store_code')
+        query = RawMaterialStock.query
+        if store_code:
+            query = query.filter_by(store_code=store_code)
+        stocks = query.all()
+        return jsonify([s.to_dict() for s in stocks])
 
-        # 按类型筛选
-        if item_type == 'product':
-            inventories = [i for i in inventories if i.product_id is not None]
-        elif item_type == 'ingredient':
-            inventories = [i for i in inventories if i.ingredient_id is not None]
-
-        return jsonify({'code': 0, 'data': [i.to_dict() for i in inventories]})
-
-    @app.route('/api/inventory/transactions', methods=['GET'])
-    def get_inventory_transactions():
-        """获取库存变动记录"""
-        store_id = request.args.get('store_id', type=int)
-        query = InventoryTransaction.query
-        if store_id:
-            query = query.filter_by(store_id=store_id)
-        transactions = query.order_by(InventoryTransaction.created_at.desc()).limit(100).all()
-        return jsonify({'code': 0, 'data': [t.to_dict() for t in transactions]})
-
-    @app.route('/api/inventory/transactions', methods=['POST'])
-    def create_inventory_transaction():
-        """创建库存变动记录（入库/出库/报废）"""
+    # ============================================================
+    # 原材料入库 API
+    # ============================================================
+    @app.route('/api/inventory/purchase', methods=['POST'])
+    def purchase_material():
+        """原材料采购入库"""
         data = request.get_json()
-        required = ['store_id', 'transaction_type', 'quantity']
-        if not data or not all(k in data for k in required):
-            return jsonify({'code': 1, 'message': '缺少必填字段'}), 400
+        if not data:
+            return jsonify({'error': '数据不能为空'}), 400
 
-        transaction = InventoryTransaction(
-            store_id=data['store_id'],
-            product_id=data.get('product_id'),
-            ingredient_id=data.get('ingredient_id'),
-            transaction_type=data['transaction_type'],
-            quantity=data['quantity'],
-            reason=data.get('reason', ''),
-            operator=data.get('operator', '')
-        )
+        material_id = data['material_id']
+        store_code = data.get('store_code', 'main')
+        quantity = data['quantity']
+        unit_price = data.get('unit_price')
+
+        material = RawMaterial.query.get(material_id)
+        if not material:
+            return jsonify({'error': '原材料不存在'}), 404
 
         # 更新库存
-        store_id = data['store_id']
-        qty = data['quantity']
-        product_id = data.get('product_id')
-        ingredient_id = data.get('ingredient_id')
+        stock = RawMaterialStock.query.filter_by(
+            material_id=material_id, store_code=store_code
+        ).first()
+        if not stock:
+            stock = RawMaterialStock(material_id=material_id, store_code=store_code, quantity=0)
+            db.session.add(stock)
+        stock.quantity += quantity
 
-        if product_id:
-            inv = Inventory.query.filter_by(
-                store_id=store_id, product_id=product_id
-            ).first()
-            if not inv:
-                inv = Inventory(store_id=store_id, product_id=product_id, quantity=0)
-                db.session.add(inv)
-            if data['transaction_type'] == 'in':
-                inv.quantity += qty
-            elif data['transaction_type'] in ('out', 'waste'):
-                inv.quantity -= qty
-
-        if ingredient_id:
-            inv = Inventory.query.filter_by(
-                store_id=store_id, ingredient_id=ingredient_id
-            ).first()
-            if not inv:
-                inv = Inventory(store_id=store_id, ingredient_id=ingredient_id, quantity=0)
-                db.session.add(inv)
-            if data['transaction_type'] == 'in':
-                inv.quantity += qty
-            elif data['transaction_type'] in ('out', 'waste'):
-                inv.quantity -= qty
-
+        # 记录交易
+        transaction = InventoryTransaction(
+            transaction_type='purchase',
+            item_type='material',
+            item_id=material_id,
+            store_code=store_code,
+            quantity=quantity,
+            unit_price=unit_price,
+            note=data.get('note', '采购入库'),
+        )
         db.session.add(transaction)
         db.session.commit()
-        return jsonify({'code': 0, 'data': transaction.to_dict(), 'message': '操作成功'}), 201
-
-    @app.route('/api/inventory/alerts', methods=['GET'])
-    def get_inventory_alerts():
-        """获取库存预警 - 低于安全库存的原料"""
-        store_id = request.args.get('store_id', type=int)
-        alerts = []
-
-        query = Inventory.query
-        if store_id:
-            query = query.filter_by(store_id=store_id)
-
-        for inv in query.all():
-            if inv.ingredient_id:
-                ingredient = Ingredient.query.get(inv.ingredient_id)
-                if ingredient and inv.quantity < ingredient.safety_stock:
-                    alerts.append({
-                        'store_id': inv.store_id,
-                        'store_name': inv.store.name if inv.store else None,
-                        'ingredient_id': ingredient.id,
-                        'ingredient_name': ingredient.name,
-                        'current_quantity': inv.quantity,
-                        'safety_stock': ingredient.safety_stock,
-                        'suggested_order': max(
-                            ingredient.safety_stock * 2 - inv.quantity,
-                            0
-                        )
-                    })
-
-        return jsonify({'code': 0, 'data': alerts})
-
-    # ============================================================
-    # 订单管理 API
-    # ============================================================
-    @app.route('/api/orders', methods=['GET'])
-    def get_orders():
-        """获取订单列表"""
-        store_id = request.args.get('store_id', type=int)
-        status = request.args.get('status')
-        date_from = request.args.get('date_from')
-        date_to = request.args.get('date_to')
-
-        query = Order.query
-        if store_id:
-            query = query.filter_by(store_id=store_id)
-        if status:
-            query = query.filter_by(status=status)
-        if date_from:
-            query = query.filter(Order.pickup_date >= datetime.strptime(date_from, '%Y-%m-%d').date())
-        if date_to:
-            query = query.filter(Order.pickup_date <= datetime.strptime(date_to, '%Y-%m-%d').date())
-
-        orders = query.order_by(Order.pickup_date.desc()).all()
-        return jsonify({'code': 0, 'data': [o.to_dict() for o in orders]})
-
-    @app.route('/api/orders', methods=['POST'])
-    def create_order():
-        """创建订单"""
-        data = request.get_json()
-        required = ['store_id', 'customer_name', 'pickup_date']
-        if not data or not all(k in data for k in required):
-            return jsonify({'code': 1, 'message': '缺少必填字段'}), 400
-
-        # 生成订单编号
-        order_no = f"SL{datetime.now().strftime('%Y%m%d%H%M%S')}{data['store_id']}"
-
-        order = Order(
-            order_no=order_no,
-            store_id=data['store_id'],
-            customer_name=data['customer_name'],
-            customer_phone=data.get('customer_phone', ''),
-            channel=data.get('channel', 'phone'),
-            status='pending',
-            pickup_date=datetime.strptime(data['pickup_date'], '%Y-%m-%d').date(),
-            pickup_time=data.get('pickup_time', ''),
-            notes=data.get('notes', '')
-        )
-
-        # 处理订单项
-        total = 0.0
-        if data.get('items'):
-            for item_data in data['items']:
-                product = Product.query.get(item_data['product_id'])
-                if product:
-                    subtotal = product.price * item_data['quantity']
-                    total += subtotal
-                    order_item = OrderItem(
-                        product_id=product.id,
-                        quantity=item_data['quantity'],
-                        unit_price=product.price,
-                        subtotal=subtotal
-                    )
-                    order.items.append(order_item)
-
-        order.total_amount = total
-        db.session.add(order)
-        db.session.commit()
-        return jsonify({'code': 0, 'data': order.to_dict(), 'message': '订单创建成功'}), 201
-
-    @app.route('/api/orders/<int:order_id>', methods=['GET'])
-    def get_order(order_id):
-        """获取订单详情"""
-        order = Order.query.get_or_404(order_id)
-        return jsonify({'code': 0, 'data': order.to_dict()})
-
-    @app.route('/api/orders/<int:order_id>', methods=['PUT'])
-    def update_order(order_id):
-        """更新订单状态"""
-        order = Order.query.get_or_404(order_id)
-        data = request.get_json()
-        if data.get('status'):
-            order.status = data['status']
-        if data.get('notes'):
-            order.notes = data['notes']
-        db.session.commit()
-        return jsonify({'code': 0, 'data': order.to_dict(), 'message': '更新成功'})
-
-    @app.route('/api/orders/calendar', methods=['GET'])
-    def get_order_calendar():
-        """获取订单日历视图"""
-        year = request.args.get('year', type=int, default=datetime.now().year)
-        month = request.args.get('month', type=int, default=datetime.now().month)
-
-        start_date = date(year, month, 1)
-        if month == 12:
-            end_date = date(year + 1, 1, 1)
-        else:
-            end_date = date(year, month + 1, 1)
-
-        orders = Order.query.filter(
-            Order.pickup_date >= start_date,
-            Order.pickup_date < end_date
-        ).all()
-
-        # 按日期分组
-        calendar = {}
-        for order in orders:
-            day = order.pickup_date.day
-            if day not in calendar:
-                calendar[day] = {
-                    'date': order.pickup_date.isoformat(),
-                    'total_orders': 0,
-                    'orders': []
-                }
-            calendar[day]['total_orders'] += 1
-            calendar[day]['orders'].append({
-                'id': order.id,
-                'order_no': order.order_no,
-                'customer_name': order.customer_name,
-                'total_amount': order.total_amount,
-                'pickup_time': order.pickup_time,
-                'status': order.status
-            })
 
         return jsonify({
-            'code': 0,
-            'data': {
-                'year': year,
-                'month': month,
-                'calendar': calendar
+            'message': '入库成功',
+            'stock': stock.to_dict(),
+            'transaction': transaction.to_dict(),
+        }), 201
+
+    # ============================================================
+    # 生产管理 API
+    # ============================================================
+    @app.route('/api/production', methods=['POST'])
+    def produce_product():
+        """生产产品：消耗原材料，增加成品库存"""
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': '数据不能为空'}), 400
+
+        product_id = data['product_id']
+        quantity = data['quantity']
+        store_code = data.get('store_code', 'main')
+
+        product = Product.query.get(product_id)
+        if not product:
+            return jsonify({'error': '产品不存在'}), 404
+
+        # 获取配方
+        recipes = Recipe.query.filter_by(product_id=product_id).all()
+        if not recipes:
+            return jsonify({'error': '该产品没有配方，无法生产'}), 400
+
+        # 检查原材料是否充足并扣减
+        for recipe in recipes:
+            material_stock = RawMaterialStock.query.filter_by(
+                material_id=recipe.material_id, store_code=store_code
+            ).first()
+            if not material_stock or material_stock.quantity < recipe.quantity * quantity:
+                material = RawMaterial.query.get(recipe.material_id)
+                return jsonify({
+                    'error': f'原材料 {material.name if material else "未知"} 库存不足'
+                }), 400
+
+        # 扣减原材料
+        for recipe in recipes:
+            material_stock = RawMaterialStock.query.filter_by(
+                material_id=recipe.material_id, store_code=store_code
+            ).first()
+            consume_qty = recipe.quantity * quantity
+            material_stock.quantity -= consume_qty
+
+            # 记录原材料消耗
+            transaction = InventoryTransaction(
+                transaction_type='production_consume',
+                item_type='material',
+                item_id=recipe.material_id,
+                store_code=store_code,
+                quantity=-consume_qty,
+                note=f'生产 {product.name} x{quantity}',
+            )
+            db.session.add(transaction)
+
+        # 增加成品库存
+        stock = Stock.query.filter_by(product_id=product_id, store_code=store_code).first()
+        if not stock:
+            stock = Stock(product_id=product_id, store_code=store_code, quantity=0)
+            db.session.add(stock)
+        stock.quantity += quantity
+
+        # 记录成品入库
+        transaction = InventoryTransaction(
+            transaction_type='production_in',
+            item_type='product',
+            item_id=product_id,
+            store_code=store_code,
+            quantity=quantity,
+            note=f'生产入库 {product.name} x{quantity}',
+        )
+        db.session.add(transaction)
+        db.session.commit()
+
+        return jsonify({
+            'message': f'成功生产 {product.name} x{quantity}',
+            'product_stock': stock.to_dict(),
+        }), 201
+
+    # ============================================================
+    # 销售 API
+    # ============================================================
+    @app.route('/api/sales', methods=['POST'])
+    def create_sale():
+        """创建销售记录"""
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': '数据不能为空'}), 400
+
+        store_code = data.get('store_code', 'main')
+        items_data = data.get('items', [])
+        if not items_data:
+            return jsonify({'error': '销售明细不能为空'}), 400
+
+        member_id = data.get('member_id')
+        cashier_id = data.get('cashier_id')
+        payment_method = data.get('payment_method', '现金')
+        coupon_id = data.get('coupon_id')
+
+        total_amount = 0.0
+        sale_items = []
+
+        # 检查库存并计算总价
+        for item_data in items_data:
+            product_id = item_data['product_id']
+            quantity = item_data['quantity']
+
+            product = Product.query.get(product_id)
+            if not product:
+                return jsonify({'error': f'产品ID {product_id} 不存在'}), 404
+
+            # 检查库存
+            stock = Stock.query.filter_by(product_id=product_id, store_code=store_code).first()
+            if not stock or stock.quantity < quantity:
+                return jsonify({'error': f'{product.name} 库存不足'}), 400
+
+            unit_price = item_data.get('unit_price', product.price)
+            subtotal = unit_price * quantity
+            total_amount += subtotal
+
+            sale_items.append({
+                'product_id': product_id,
+                'quantity': quantity,
+                'unit_price': unit_price,
+                'subtotal': subtotal,
+                'product': product,
+            })
+
+        # 计算折扣
+        discount_amount = 0.0
+        if coupon_id and member_id:
+            member_coupon = MemberCoupon.query.filter_by(
+                member_id=member_id, coupon_id=coupon_id, is_used=False
+            ).first()
+            if member_coupon:
+                coupon = Coupon.query.get(coupon_id)
+                if coupon and coupon.is_active:
+                    if coupon.coupon_type == 'cash' and total_amount >= (coupon.condition_amount or 0):
+                        discount_amount = coupon.value
+                    elif coupon.coupon_type == 'discount':
+                        discount_amount = total_amount * (1 - coupon.value)
+
+        # 会员折扣
+        member_discount = 0.0
+        if member_id:
+            member = Member.query.get(member_id)
+            if member:
+                from src.config import Config
+                level_info = Config.MEMBER_LEVELS.get(member.level, {})
+                discount_rate = level_info.get('discount', 1.0)
+                if discount_rate < 1.0:
+                    member_discount = total_amount * (1 - discount_rate)
+
+        final_discount = max(discount_amount, member_discount)
+        final_amount = total_amount - final_discount
+
+        # 创建销售单
+        sale = Sale(
+            store_code=store_code,
+            total_amount=total_amount,
+            discount_amount=final_discount,
+            final_amount=final_amount,
+            payment_method=payment_method,
+            member_id=member_id,
+            cashier_id=cashier_id,
+        )
+        db.session.add(sale)
+        db.session.flush()  # 获取sale.id
+
+        # 创建销售明细并扣减库存
+        for item_data in sale_items:
+            sale_item = SaleItem(
+                sale_id=sale.id,
+                product_id=item_data['product_id'],
+                quantity=item_data['quantity'],
+                unit_price=item_data['unit_price'],
+                subtotal=item_data['subtotal'],
+            )
+            db.session.add(sale_item)
+
+            # 扣减库存
+            stock = Stock.query.filter_by(
+                product_id=item_data['product_id'], store_code=store_code
+            ).first()
+            if stock:
+                stock.quantity -= item_data['quantity']
+
+            # 记录库存变动
+            transaction = InventoryTransaction(
+                transaction_type='sale',
+                item_type='product',
+                item_id=item_data['product_id'],
+                store_code=store_code,
+                quantity=-item_data['quantity'],
+                reference_id=sale.id,
+                note=f'销售出库',
+            )
+            db.session.add(transaction)
+
+        # 处理会员积分
+        if member_id:
+            member = Member.query.get(member_id)
+            if member:
+                from src.config import Config
+                points_earned = int(final_amount / Config.POINTS_RATIO)
+                member.points += points_earned
+                member.total_spent += final_amount
+                member.last_visit_at = datetime.utcnow()
+                member.calculate_level()
+
+                points_log = PointsLog(
+                    member_id=member_id,
+                    points_change=points_earned,
+                    reason='purchase',
+                    reference_id=sale.id,
+                )
+                db.session.add(points_log)
+
+        # 标记优惠券已使用
+        if coupon_id and member_id:
+            member_coupon = MemberCoupon.query.filter_by(
+                member_id=member_id, coupon_id=coupon_id, is_used=False
+            ).first()
+            if member_coupon:
+                member_coupon.is_used = True
+                member_coupon.used_at = datetime.utcnow()
+                member_coupon.sale_id = sale.id
+
+        db.session.commit()
+
+        return jsonify(sale.to_dict()), 201
+
+    @app.route('/api/sales', methods=['GET'])
+    def list_sales():
+        """查询销售记录"""
+        store_code = request.args.get('store_code')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        member_id = request.args.get('member_id', type=int)
+
+        query = Sale.query
+        if store_code:
+            query = query.filter_by(store_code=store_code)
+        if member_id:
+            query = query.filter_by(member_id=member_id)
+        if start_date:
+            query = query.filter(Sale.created_at >= datetime.fromisoformat(start_date))
+        if end_date:
+            query = query.filter(Sale.created_at <= datetime.fromisoformat(end_date))
+
+        sales = query.order_by(Sale.created_at.desc()).all()
+        return jsonify([s.to_dict() for s in sales])
+
+    # ============================================================
+    # 销售数据看板 API
+    # ============================================================
+    @app.route('/api/dashboard/summary', methods=['GET'])
+    def dashboard_summary():
+        """销售数据看板汇总"""
+        period = request.args.get('period', 'today')
+        store_code = request.args.get('store_code')
+
+        now = datetime.utcnow()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        if period == 'today':
+            start_date = today_start
+        elif period == 'week':
+            start_date = today_start - timedelta(days=now.weekday())
+        elif period == 'month':
+            start_date = today_start.replace(day=1)
+        else:
+            start_date = today_start
+
+        query = Sale.query.filter(Sale.created_at >= start_date)
+        if store_code:
+            query = query.filter_by(store_code=store_code)
+
+        sales = query.all()
+        total_revenue = sum(s.final_amount for s in sales)
+        total_orders = len(sales)
+        avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
+
+        # 按门店统计
+        from src.config import Config
+        store_revenue = {}
+        for code, info in Config.STORES.items():
+            store_sales = [s for s in sales if s.store_code == code]
+            store_revenue[code] = {
+                'name': info['name'],
+                'revenue': sum(s.final_amount for s in store_sales),
+                'orders': len(store_sales),
             }
+
+        return jsonify({
+            'period': period,
+            'total_revenue': round(total_revenue, 2),
+            'total_orders': total_orders,
+            'avg_order_value': round(avg_order_value, 2),
+            'store_revenue': store_revenue,
+        })
+
+    @app.route('/api/dashboard/top-products', methods=['GET'])
+    def top_products():
+        """热销/滞销产品排行榜"""
+        period = request.args.get('period', 'today')
+        store_code = request.args.get('store_code')
+        limit = request.args.get('limit', 10, type=int)
+
+        now = datetime.utcnow()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        if period == 'today':
+            start_date = today_start
+        elif period == 'week':
+            start_date = today_start - timedelta(days=now.weekday())
+        elif period == 'month':
+            start_date = today_start.replace(day=1)
+        else:
+            start_date = today_start
+
+        query = SaleItem.query.join(Sale).filter(Sale.created_at >= start_date)
+        if store_code:
+            query = query.filter(Sale.store_code == store_code)
+
+        items = query.all()
+
+        # 汇总产品销量
+        product_sales = {}
+        for item in items:
+            pid = item.product_id
+            if pid not in product_sales:
+                product_sales[pid] = {
+                    'product_id': pid,
+                    'product_name': item.product.name if item.product else '未知',
+                    'total_quantity': 0,
+                    'total_revenue': 0,
+                }
+            product_sales[pid]['total_quantity'] += item.quantity
+            product_sales[pid]['total_revenue'] += item.subtotal
+
+        sorted_products = sorted(product_sales.values(), key=lambda x: x['total_quantity'], reverse=True)
+
+        top = sorted_products[:limit]
+        bottom = sorted_products[-limit:] if len(sorted_products) > limit else []
+
+        return jsonify({
+            'top': top,
+            'bottom': list(reversed(bottom)),
         })
 
     # ============================================================
-    # 排班管理 API
+    # 调拨管理 API
     # ============================================================
-    @app.route('/api/schedules', methods=['GET'])
-    def get_schedules():
-        """获取排班表"""
-        store_id = request.args.get('store_id', type=int)
-        date_from = request.args.get('date_from')
-        date_to = request.args.get('date_to')
-
-        query = Schedule.query
-        if store_id:
-            query = query.filter_by(store_id=store_id)
-        if date_from:
-            query = query.filter(Schedule.work_date >= datetime.strptime(date_from, '%Y-%m-%d').date())
-        if date_to:
-            query = query.filter(Schedule.work_date <= datetime.strptime(date_to, '%Y-%m-%d').date())
-
-        schedules = query.order_by(Schedule.work_date).all()
-        return jsonify({'code': 0, 'data': [s.to_dict() for s in schedules]})
-
-    @app.route('/api/schedules', methods=['POST'])
-    def create_schedule():
-        """创建排班记录"""
+    @app.route('/api/transfers', methods=['POST'])
+    def create_transfer():
+        """创建调拨申请"""
         data = request.get_json()
-        required = ['employee_id', 'store_id', 'work_date', 'start_time', 'end_time']
-        if not data or not all(k in data for k in required):
-            return jsonify({'code': 1, 'message': '缺少必填字段'}), 400
+        if not data:
+            return jsonify({'error': '数据不能为空'}), 400
 
-        schedule = Schedule(
-            employee_id=data['employee_id'],
-            store_id=data['store_id'],
-            work_date=datetime.strptime(data['work_date'], '%Y-%m-%d').date(),
-            start_time=data['start_time'],
-            end_time=data['end_time'],
-            notes=data.get('notes', '')
+        product_id = data['product_id']
+        quantity = data['quantity']
+        from_store = data['from_store']
+        to_store = data['to_store']
+        requester_id = data.get('requester_id')
+
+        # 检查库存
+        stock = Stock.query.filter_by(product_id=product_id, store_code=from_store).first()
+        if not stock or stock.quantity < quantity:
+            return jsonify({'error': '调出门店库存不足'}), 400
+
+        transfer = TransferOrder(
+            product_id=product_id,
+            quantity=quantity,
+            from_store=from_store,
+            to_store=to_store,
+            status='pending',
+            requester_id=requester_id,
+            note=data.get('note'),
         )
-        db.session.add(schedule)
+        db.session.add(transfer)
         db.session.commit()
-        return jsonify({'code': 0, 'data': schedule.to_dict(), 'message': '排班创建成功'}), 201
 
-    @app.route('/api/shift-requests', methods=['GET'])
-    def get_shift_requests():
-        """获取调班/请假申请"""
-        employee_id = request.args.get('employee_id', type=int)
+        return jsonify(transfer.to_dict()), 201
+
+    @app.route('/api/transfers', methods=['GET'])
+    def list_transfers():
+        """查询调拨单"""
         status = request.args.get('status')
-
-        query = ShiftRequest.query
-        if employee_id:
-            query = query.filter_by(employee_id=employee_id)
+        query = TransferOrder.query
         if status:
             query = query.filter_by(status=status)
+        transfers = query.order_by(TransferOrder.created_at.desc()).all()
+        return jsonify([t.to_dict() for t in transfers])
 
-        requests = query.order_by(ShiftRequest.created_at.desc()).all()
-        return jsonify({'code': 0, 'data': [r.to_dict() for r in requests]})
+    @app.route('/api/transfers/<int:transfer_id>/approve', methods=['POST'])
+    def approve_transfer(transfer_id):
+        """审批调拨单"""
+        transfer = TransferOrder.query.get_or_404(transfer_id)
+        data = request.get_json() or {}
 
-    @app.route('/api/shift-requests', methods=['POST'])
-    def create_shift_request():
-        """创建调班/请假申请"""
-        data = request.get_json()
-        required = ['employee_id', 'request_type', 'target_date']
-        if not data or not all(k in data for k in required):
-            return jsonify({'code': 1, 'message': '缺少必填字段'}), 400
+        if transfer.status != 'pending':
+            return jsonify({'error': '调拨单状态不正确'}), 400
 
-        request_obj = ShiftRequest(
-            employee_id=data['employee_id'],
-            request_type=data['request_type'],
-            target_date=datetime.strptime(data['target_date'], '%Y-%m-%d').date(),
-            reason=data.get('reason', ''),
-            swap_with_employee_id=data.get('swap_with_employee_id')
+        transfer.status = 'approved'
+        transfer.approver_id = data.get('approver_id')
+        db.session.commit()
+
+        return jsonify(transfer.to_dict())
+
+    @app.route('/api/transfers/<int:transfer_id>/deliver', methods=['POST'])
+    def deliver_transfer(transfer_id):
+        """执行调拨（扣减调出方库存，增加调入方库存）"""
+        transfer = TransferOrder.query.get_or_404(transfer_id)
+        data = request.get_json() or {}
+
+        if transfer.status != 'approved':
+            return jsonify({'error': '调拨单未审批或已完成'}), 400
+
+        # 扣减调出方库存
+        from_stock = Stock.query.filter_by(
+            product_id=transfer.product_id, store_code=transfer.from_store
+        ).first()
+        if not from_stock or from_stock.quantity < transfer.quantity:
+            return jsonify({'error': '调出方库存不足'}), 400
+        from_stock.quantity -= transfer.quantity
+
+        # 增加调入方库存
+        to_stock = Stock.query.filter_by(
+            product_id=transfer.product_id, store_code=transfer.to_store
+        ).first()
+        if not to_stock:
+            to_stock = Stock(product_id=transfer.product_id, store_code=transfer.to_store, quantity=0)
+            db.session.add(to_stock)
+        to_stock.quantity += transfer.quantity
+
+        # 记录交易
+        out_transaction = InventoryTransaction(
+            transaction_type='transfer_out',
+            item_type='product',
+            item_id=transfer.product_id,
+            store_code=transfer.from_store,
+            quantity=-transfer.quantity,
+            reference_id=transfer.id,
+            note=f'调拨至{transfer.to_store}',
         )
-        db.session.add(request_obj)
-        db.session.commit()
-        return jsonify({'code': 0, 'data': request_obj.to_dict(), 'message': '申请已提交'}), 201
+        db.session.add(out_transaction)
 
-    @app.route('/api/shift-requests/<int:request_id>/approve', methods=['PUT'])
-    def approve_shift_request(request_id):
-        """审批调班/请假申请"""
-        request_obj = ShiftRequest.query.get_or_404(request_id)
-        data = request.get_json()
-        status = data.get('status', 'approved')
-        request_obj.status = status
-        request_obj.approved_by = data.get('approved_by')
+        in_transaction = InventoryTransaction(
+            transaction_type='transfer_in',
+            item_type='product',
+            item_id=transfer.product_id,
+            store_code=transfer.to_store,
+            quantity=transfer.quantity,
+            reference_id=transfer.id,
+            note=f'从{transfer.from_store}调拨',
+        )
+        db.session.add(in_transaction)
+
+        transfer.status = 'delivered'
+        transfer.driver_id = data.get('driver_id')
         db.session.commit()
-        return jsonify({'code': 0, 'data': request_obj.to_dict(), 'message': f'已{status}'})
+
+        return jsonify(transfer.to_dict())
 
     # ============================================================
     # 会员管理 API
     # ============================================================
     @app.route('/api/members', methods=['GET'])
-    def get_members():
-        """获取会员列表"""
-        phone = request.args.get('phone')
-        query = Member.query
-        if phone:
-            query = query.filter_by(phone=phone)
-        members = query.order_by(Member.total_spent.desc()).all()
-        return jsonify({'code': 0, 'data': [m.to_dict() for m in members]})
+    def list_members():
+        members = Member.query.all()
+        return jsonify([m.to_dict() for m in members])
 
     @app.route('/api/members', methods=['POST'])
     def create_member():
-        """创建会员"""
+        """注册会员"""
         data = request.get_json()
         if not data or not data.get('phone'):
-            return jsonify({'code': 1, 'message': '手机号不能为空'}), 400
+            return jsonify({'error': '手机号不能为空'}), 400
 
-        # 检查是否已存在
         existing = Member.query.filter_by(phone=data['phone']).first()
         if existing:
-            return jsonify({'code': 1, 'message': '该手机号已注册'}), 400
+            return jsonify(existing.to_dict())
 
         member = Member(
             phone=data['phone'],
-            name=data.get('name', ''),
-            gender=data.get('gender'),
+            name=data.get('name'),
             birthday=datetime.strptime(data['birthday'], '%Y-%m-%d').date() if data.get('birthday') else None,
-            tags=','.join(data.get('tags', [])) if data.get('tags') else ''
         )
         db.session.add(member)
         db.session.commit()
-        return jsonify({'code': 0, 'data': member.to_dict(), 'message': '注册成功'}), 201
 
-    # ============================================================
-    # 销售记录 API
-    # ============================================================
-    @app.route('/api/sales', methods=['GET'])
-    def get_sales():
-        """获取销售记录"""
-        store_id = request.args.get('store_id', type=int)
-        date_from = request.args.get('date_from')
-        date_to = request.args.get('date_to')
+        return jsonify(member.to_dict()), 201
 
-        query = SaleRecord.query
-        if store_id:
-            query = query.filter_by(store_id=store_id)
-        if date_from:
-            query = query.filter(SaleRecord.sale_date >= datetime.strptime(date_from, '%Y-%m-%d').date())
-        if date_to:
-            query = query.filter(SaleRecord.sale_date <= datetime.strptime(date_to, '%Y-%m-%d').date())
+    @app.route('/api/members/<int:member_id>', methods=['GET'])
+    def get_member(member_id):
+        member = Member.query.get_or_404(member_id)
+        return jsonify(member.to_dict())
 
-        records = query.order_by(SaleRecord.sale_date.desc()).limit(200).all()
-        return jsonify({'code': 0, 'data': [r.to_dict() for r in records]})
+    @app.route('/api/members/phone/<phone>', methods=['GET'])
+    def get_member_by_phone(phone):
+        member = Member.query.filter_by(phone=phone).first()
+        if not member:
+            return jsonify({'error': '会员不存在'}), 404
+        return jsonify(member.to_dict())
 
-    @app.route('/api/sales', methods=['POST'])
-    def create_sale():
-        """创建销售记录"""
+    @app.route('/api/members/<int:member_id>/points', methods=['GET'])
+    def get_member_points_log(member_id):
+        logs = PointsLog.query.filter_by(member_id=member_id).order_by(
+            PointsLog.created_at.desc()
+        ).all()
+        return jsonify([l.to_dict() for l in logs])
+
+    @app.route('/api/members/<int:member_id>/exchange', methods=['POST'])
+    def exchange_points(member_id):
+        """积分兑换"""
+        member = Member.query.get_or_404(member_id)
         data = request.get_json()
-        required = ['store_id', 'product_id', 'quantity', 'unit_price']
-        if not data or not all(k in data for k in required):
-            return jsonify({'code': 1, 'message': '缺少必填字段'}), 400
+        if not data or not data.get('points'):
+            return jsonify({'error': '积分数量不能为空'}), 400
 
-        total = data['quantity'] * data['unit_price']
-        sale = SaleRecord(
-            store_id=data['store_id'],
-            product_id=data['product_id'],
-            member_id=data.get('member_id'),
-            quantity=data['quantity'],
-            unit_price=data['unit_price'],
-            total_amount=total,
-            sale_date=datetime.strptime(data.get('sale_date', datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d').date(),
-            sale_time=data.get('sale_time', datetime.now().strftime('%H:%M'))
+        points_to_exchange = data['points']
+        if member.points < points_to_exchange:
+            return jsonify({'error': '积分不足'}), 400
+
+        from src.config import Config
+        exchange_amount = points_to_exchange / Config.POINTS_EXCHANGE_RATE
+
+        member.points -= points_to_exchange
+
+        log = PointsLog(
+            member_id=member_id,
+            points_change=-points_to_exchange,
+            reason='exchange',
+            note=f'兑换{exchange_amount}元',
         )
-
-        # 更新会员累计消费
-        if data.get('member_id'):
-            member = Member.query.get(data['member_id'])
-            if member:
-                member.total_spent += total
-                member.points += int(total)  # 1元=1积分
-
-        # 更新成品库存
-        inv = Inventory.query.filter_by(
-            store_id=data['store_id'],
-            product_id=data['product_id']
-        ).first()
-        if inv:
-            inv.quantity -= data['quantity']
-
-        db.session.add(sale)
+        db.session.add(log)
         db.session.commit()
-        return jsonify({'code': 0, 'data': sale.to_dict(), 'message': '销售记录已创建'}), 201
-
-    # ============================================================
-    # 生产记录 API
-    # ============================================================
-    @app.route('/api/production', methods=['GET'])
-    def get_production():
-        """获取生产记录"""
-        store_id = request.args.get('store_id', type=int)
-        date_from = request.args.get('date_from')
-        date_to = request.args.get('date_to')
-
-        query = ProductionRecord.query
-        if store_id:
-            query = query.filter_by(store_id=store_id)
-        if date_from:
-            query = query.filter(ProductionRecord.production_date >= datetime.strptime(date_from, '%Y-%m-%d').date())
-        if date_to:
-            query = query.filter(ProductionRecord.production_date <= datetime.strptime(date_to, '%Y-%m-%d').date())
-
-        records = query.order_by(ProductionRecord.production_date.desc()).all()
-        return jsonify({'code': 0, 'data': [r.to_dict() for r in records]})
-
-    @app.route('/api/production', methods=['POST'])
-    def create_production():
-        """创建生产记录"""
-        data = request.get_json()
-        required = ['store_id', 'product_id', 'actual_quantity']
-        if not data or not all(k in data for k in required):
-            return jsonify({'code': 1, 'message': '缺少必填字段'}), 400
-
-        record = ProductionRecord(
-            store_id=data['store_id'],
-            product_id=data['product_id'],
-            planned_quantity=data.get('planned_quantity', 0),
-            actual_quantity=data['actual_quantity'],
-            waste_quantity=data.get('waste_quantity', 0),
-            waste_reason=data.get('waste_reason', ''),
-            production_date=datetime.strptime(data.get('production_date', datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d').date(),
-            operator=data.get('operator', '')
-        )
-
-        # 更新成品库存（生产入库）
-        inv = Inventory.query.filter_by(
-            store_id=data['store_id'],
-            product_id=data['product_id']
-        ).first()
-        if not inv:
-            inv = Inventory(
-                store_id=data['store_id'],
-                product_id=data['product_id'],
-                quantity=0
-            )
-            db.session.add(inv)
-        inv.quantity += data['actual_quantity'] - data.get('waste_quantity', 0)
-
-        db.session.add(record)
-        db.session.commit()
-        return jsonify({'code': 0, 'data': record.to_dict(), 'message': '生产记录已创建'}), 201
-
-    # ============================================================
-    # 数据看板 API
-    # ============================================================
-    @app.route('/api/dashboard', methods=['GET'])
-    def get_dashboard():
-        """获取核心经营数据仪表盘"""
-        today = date.today()
-        week_ago = today - timedelta(days=7)
-        month_ago = today - timedelta(days=30)
-
-        # 今日销售额
-        today_sales = db.session.query(db.func.sum(SaleRecord.total_amount)).filter(
-            SaleRecord.sale_date == today
-        ).scalar() or 0.0
-
-        # 本周销售额
-        week_sales = db.session.query(db.func.sum(SaleRecord.total_amount)).filter(
-            SaleRecord.sale_date >= week_ago
-        ).scalar() or 0.0
-
-        # 本月销售额
-        month_sales = db.session.query(db.func.sum(SaleRecord.total_amount)).filter(
-            SaleRecord.sale_date >= month_ago
-        ).scalar() or 0.0
-
-        # 各店销售额
-        stores = Store.query.all()
-        store_sales = []
-        for store in stores:
-            store_today = db.session.query(db.func.sum(SaleRecord.total_amount)).filter(
-                SaleRecord.store_id == store.id,
-                SaleRecord.sale_date == today
-            ).scalar() or 0.0
-            store_sales.append({
-                'store_id': store.id,
-                'store_name': store.name,
-                'today_sales': store_today
-            })
-
-        # 销量Top10产品
-        top_products = db.session.query(
-            Product.name,
-            db.func.sum(SaleRecord.quantity).label('total_qty'),
-            db.func.sum(SaleRecord.total_amount).label('total_amount')
-        ).join(SaleRecord, Product.id == SaleRecord.product_id).filter(
-            SaleRecord.sale_date >= month_ago
-        ).group_by(Product.id).order_by(db.desc('total_qty')).limit(10).all()
-
-        # 综合损耗率
-        total_production = db.session.query(db.func.sum(ProductionRecord.actual_quantity)).filter(
-            ProductionRecord.production_date >= month_ago
-        ).scalar() or 0
-        total_waste = db.session.query(db.func.sum(ProductionRecord.waste_quantity)).filter(
-            ProductionRecord.production_date >= month_ago
-        ).scalar() or 0
-        waste_rate = round((total_waste / total_production * 100), 2) if total_production > 0 else 0
-
-        # 待处理订单
-        pending_orders = Order.query.filter(
-            Order.status.in_(['pending', 'confirmed'])
-        ).count()
-
-        # 库存预警数量
-        alert_count = 0
-        for inv in Inventory.query.all():
-            if inv.ingredient_id:
-                ingredient = Ingredient.query.get(inv.ingredient_id)
-                if ingredient and inv.quantity < ingredient.safety_stock:
-                    alert_count += 1
 
         return jsonify({
-            'code': 0,
-            'data': {
-                'today_sales': today_sales,
-                'week_sales': week_sales,
-                'month_sales': month_sales,
-                'store_sales': store_sales,
-                'top_products': [
-                    {
-                        'name': p.name,
-                        'total_quantity': int(p.total_qty),
-                        'total_amount': float(p.total_amount)
-                    }
-                    for p in top_products
-                ],
-                'waste_rate': waste_rate,
-                'pending_orders': pending_orders,
-                'inventory_alerts': alert_count
-            }
+            'message': f'成功兑换{exchange_amount}元',
+            'member': member.to_dict(),
         })
 
+    # ============================================================
+    # 优惠券管理 API
+    # ============================================================
+    @app.route('/api/coupons', methods=['GET'])
+    def list_coupons():
+        coupons = Coupon.query.all()
+        return jsonify([c.to_dict() for c in coupons])
 
-def _init_seed_data():
-    from datetime import date; today = date.today()
-    """初始化种子数据"""
-    # 如果已有数据则跳过
-    if Store.query.first():
-        return
+    @app.route('/api/coupons', methods=['POST'])
+    def create_coupon():
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': '数据不能为空'}), 400
 
-    # 创建门店
-    store1 = Store(name='SweetLoaf 总店', location='台南东区', phone='06-1234567')
-    store2 = Store(name='SweetLoaf 中西店', location='台南中西区（商圈）', phone='06-2345678')
-    store3 = Store(name='SweetLoaf 南区分店', location='台南南区（学区）', phone='06-3456789')
-    db.session.add_all([store1, store2, store3])
-    db.session.flush()
-
-    # 创建员工
-    employees = [
-        Employee(name='陈老板', role='店长', store_id=store1.id),
-        Employee(name='王师傅', role='烘焙师', store_id=store1.id),
-        Employee(name='林师傅', role='烘焙师', store_id=store1.id),
-        Employee(name='小李', role='店员', store_id=store1.id),
-        Employee(name='小张', role='店员', store_id=store2.id),
-        Employee(name='小陈', role='店员', store_id=store2.id),
-        Employee(name='阿华', role='烘焙师', store_id=store2.id),
-        Employee(name='小美', role='店员', store_id=store3.id),
-        Employee(name='阿强', role='烘焙师', store_id=store3.id),
-        Employee(name='小婷', role='店员', store_id=store3.id),
-        Employee(name='大伟', role='店员', store_id=store1.id),
-        Employee(name='雅文', role='店员', store_id=store2.id),
-    ]
-    db.session.add_all(employees)
-    db.session.flush()
-
-    # 创建产品
-    products = [
-        Product(name='台南桂圆核桃面包', category='面包', price=65, cost=25,
-                is_signature=True, is_limited=True,
-                description='招牌产品，每日限量供应'),
-        Product(name='芒果乳酪蛋糕', category='蛋糕', price=180, cost=70,
-                is_signature=True, is_limited=True,
-                description='夏季限定，使用新鲜芒果'),
-        Product(name='经典可颂', category='面包', price=45, cost=15),
-        Product(name='北海道牛奶吐司', category='面包', price=80, cost=30),
-        Product(name='巧克力布朗尼', category='蛋糕', price=55, cost=20),
-        Product(name='手工蔓越莓饼干', category='饼干', price=35, cost=12),
-        Product(name='抹茶红豆面包', category='面包', price=50, cost=18),
-        Product(name='奶油泡芙', category='蛋糕', price=40, cost=15),
-        Product(name='核桃燕麦饼干', category='饼干', price=38, cost=14),
-        Product(name='法式长棍面包', category='面包', price=55, cost=20),
-    ]
-    db.session.add_all(products)
-    db.session.flush()
-
-    # 创建原料
-    ingredients = [
-        Ingredient(name='高筋面粉', unit='kg', unit_price=25, safety_stock=50, supplier='台南面粉行'),
-        Ingredient(name='低筋面粉', unit='kg', unit_price=28, safety_stock=30, supplier='台南面粉行'),
-        Ingredient(name='无盐黄油', unit='kg', unit_price=120, safety_stock=20, supplier='进口食材商'),
-        Ingredient(name='奶油芝士', unit='kg', unit_price=180, safety_stock=10, supplier='进口食材商'),
-        Ingredient(name='细砂糖', unit='kg', unit_price=15, safety_stock=40, supplier='台南糖业'),
-        Ingredient(name='鸡蛋', unit='个', unit_price=8, safety_stock=200, supplier='本地农场'),
-        Ingredient(name='鲜牛奶', unit='L', unit_price=45, safety_stock=30, supplier='本地牧场'),
-        Ingredient(name='桂圆干', unit='kg', unit_price=200, safety_stock=5, supplier='东山农产'),
-        Ingredient(name='核桃仁', unit='kg', unit_price=160, safety_stock=8, supplier='坚果批发商'),
-        Ingredient(name='芒果果泥', unit='kg', unit_price=90, safety_stock=10, supplier='水果加工厂'),
-    ]
-    db.session.add_all(ingredients)
-    db.session.flush()
-
-    # 创建初始库存
-    for store in [store1, store2, store3]:
-        for product in products:
-            inv = Inventory(
-                store_id=store.id,
-                product_id=product.id,
-                quantity=10  # 每种产品初始10个
-            )
-            db.session.add(inv)
-        for ingredient in ingredients:
-            inv = Inventory(
-                store_id=store.id,
-                ingredient_id=ingredient.id,
-                quantity=ingredient.safety_stock * 2  # 初始为安全库存的2倍
-            )
-            db.session.add(inv)
-
-    # 创建示例订单
-    sample_order = Order(
-        order_no=f"SL{datetime.now().strftime('%Y%m%d%H%M%S')}01",
-        store_id=store1.id,
-        customer_name='张小姐',
-        customer_phone='0912-345678',
-        channel='phone',
-        status='confirmed',
-        total_amount=360,
-        pickup_date=today + timedelta(days=1),
-        pickup_time='14:00-15:00',
-        notes='生日蛋糕，请写"生日快乐"'
-    )
-    db.session.add(sample_order)
-    db.session.flush()
-
-    # 订单项
-    order_item = OrderItem(
-        order_id=sample_order.id,
-        product_id=products[1].id,  # 芒果乳酪蛋糕
-        quantity=2,
-        unit_price=180,
-        subtotal=360
-    )
-    db.session.add(order_item)
-
-    # 创建示例会员
-    member = Member(
-        phone='0912-345678',
-        name='张小姐',
-        gender='女',
-        birthday=date(1995, 5, 20),
-        total_spent=3600,
-        points=3600,
-        level='silver',
-        tags='蛋糕控,高客单价'
-    )
-    db.session.add(member)
-
-    # 创建今日排班
-    for emp in employees:
-        schedule = Schedule(
-            employee_id=emp.id,
-            store_id=emp.store_id,
-            work_date=today,
-            start_time='08:00',
-            end_time='17:00',
-            status='confirmed'
+        coupon = Coupon(
+            name=data['name'],
+            coupon_type=data['coupon_type'],
+            condition_amount=data.get('condition_amount'),
+            value=data['value'],
+            start_date=datetime.fromisoformat(data['start_date']) if data.get('start_date') else None,
+            end_date=datetime.fromisoformat(data['end_date']) if data.get('end_date') else None,
         )
-        db.session.add(schedule)
+        db.session.add(coupon)
+        db.session.commit()
+        return jsonify(coupon.to_dict()), 201
 
-    db.session.commit()
-    print('✅ 种子数据初始化完成')
+    @app.route('/api/coupons/<int:coupon_id>/send', methods=['POST'])
+    def send_coupon_to_members(coupon_id):
+        """向会员发送优惠券"""
+        coupon = Coupon.query.get_or_404(coupon_id)
+        data = request.get_json() or {}
+        member_ids = data.get('member_ids', [])
+
+        if not member_ids:
+            # 如果没有指定会员，发送给所有活跃会员
+            members = Member.query.filter_by(is_active=True).all()
+            member_ids = [m.id for m in members]
+
+        sent_count = 0
+        for mid in member_ids:
+            existing = MemberCoupon.query.filter_by(member_id=mid, coupon_id=coupon_id, is_used=False).first()
+            if not existing:
+                mc = MemberCoupon(member_id=mid, coupon_id=coupon_id)
+                db.session.add(mc)
+                sent_count += 1
+
+        db.session.commit()
+        return jsonify({'message': f'成功向{sent_count}位会员发送优惠券'})
+
+    @app.route('/api/members/<int:member_id>/coupons', methods=['GET'])
+    def get_member_coupons(member_id):
+        coupons = MemberCoupon.query.filter_by(member_id=member_id).all()
+        return jsonify([c.to_dict() for c in coupons])
+
+    # ============================================================
+    # 生产建议 API
+    # ============================================================
+    @app.route('/api/production-suggestions', methods=['GET'])
+    def get_production_suggestions():
+        """获取生产建议"""
+        target_date_str = request.args.get('date')
+        if target_date_str:
+            target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+        else:
+            target_date = date.today() + timedelta(days=1)
+
+        suggestions = ProductionSuggestion.query.filter_by(
+            suggested_date=target_date
+        ).all()
+
+        if not suggestions:
+            # 自动生成建议
+            suggestions = generate_suggestions(target_date)
+
+        return jsonify([s.to_dict() for s in suggestions])
+
+    def generate_suggestions(target_date):
+        """基于历史数据生成生产建议"""
+        from src.config import Config
+        days = Config.PRODUCTION_FORECAST_DAYS
+        start_date = datetime.combine(target_date - timedelta(days=days), datetime.min.time())
+
+        products = Product.query.filter_by(is_active=True).all()
+        suggestions = []
+
+        for product in products:
+            # 查询过去N天的销量
+            sales_data = db.session.query(
+                db.func.sum(SaleItem.quantity)
+            ).join(Sale).filter(
+                SaleItem.product_id == product.id,
+                Sale.created_at >= start_date,
+            ).scalar() or 0
+
+            avg_daily = sales_data / days if days > 0 else 0
+            suggested_qty = max(1, int(avg_daily * 1.15))  # 建议量 = 平均销量 * 1.15
+
+            suggestion = ProductionSuggestion(
+                product_id=product.id,
+                suggested_date=target_date,
+                suggested_quantity=suggested_qty,
+                reason=f'基于过去{days}天平均销量{avg_daily:.1f}，上浮15%',
+            )
+            db.session.add(suggestion)
+            suggestions.append(suggestion)
+
+        db.session.commit()
+        return suggestions
+
+    @app.route('/api/production-suggestions/<int:suggestion_id>/adjust', methods=['POST'])
+    def adjust_suggestion(suggestion_id):
+        """师傅调整生产建议"""
+        suggestion = ProductionSuggestion.query.get_or_404(suggestion_id)
+        data = request.get_json()
+        if not data or 'actual_quantity' not in data:
+            return jsonify({'error': '请提供调整后的数量'}), 400
+
+        suggestion.actual_quantity = data['actual_quantity']
+        suggestion.is_adjusted = True
+        db.session.commit()
+
+        return jsonify(suggestion.to_dict())
+
+    # ============================================================
+    # 库存交易记录 API
+    # ============================================================
+    @app.route('/api/inventory-transactions', methods=['GET'])
+    def list_inventory_transactions():
+        store_code = request.args.get('store_code')
+        transaction_type = request.args.get('transaction_type')
+        limit = request.args.get('limit', 50, type=int)
+
+        query = InventoryTransaction.query
+        if store_code:
+            query = query.filter_by(store_code=store_code)
+        if transaction_type:
+            query = query.filter_by(transaction_type=transaction_type)
+
+        transactions = query.order_by(
+            InventoryTransaction.created_at.desc()
+        ).limit(limit).all()
+
+        return jsonify([t.to_dict() for t in transactions])
+
+    # ============================================================
+    # 库存预警 API
+    # ============================================================
+    @app.route('/api/alerts', methods=['GET'])
+    def get_alerts():
+        """获取所有库存预警"""
+        from src.config import Config
+        threshold = Config.STOCK_ALERT_THRESHOLD
+        alerts = []
+
+        # 成品库存预警
+        low_stocks = Stock.query.filter(Stock.quantity < threshold).all()
+        for s in low_stocks:
+            alerts.append({
+                'type': 'product',
+                'product_id': s.product_id,
+                'product_name': s.product.name if s.product else '',
+                'store_code': s.store_code,
+                'current_quantity': s.quantity,
+                'threshold': threshold,
+                'message': f'【库存预警】{s.store_code}店 {s.product.name if s.product else ""} 库存仅剩 {s.quantity} 个',
+            })
+
+        # 原材料库存预警
+        low_materials = RawMaterialStock.query.join(RawMaterial).filter(
+            RawMaterialStock.quantity < RawMaterial.min_stock
+        ).all()
+        for s in low_materials:
+            alerts.append({
+                'type': 'material',
+                'material_id': s.material_id,
+                'material_name': s.material.name if s.material else '',
+                'store_code': s.store_code,
+                'current_quantity': s.quantity,
+                'min_stock': s.material.min_stock if s.material else 0,
+                'message': f'【原材料预警】{s.store_code}店 {s.material.name if s.material else ""} 库存 {s.quantity}，低于最低库存 {s.material.min_stock if s.material else 0}',
+            })
+
+        return jsonify(alerts)
+
+    # ============================================================
+    # 生日会员查询 API（营销用）
+    # ============================================================
+    @app.route('/api/members/birthday-today', methods=['GET'])
+    def birthday_members_today():
+        """查询今天生日的会员"""
+        today = date.today()
+        members = Member.query.filter(
+            db.extract('month', Member.birthday) == today.month,
+            db.extract('day', Member.birthday) == today.day,
+            Member.is_active == True,
+        ).all()
+        return jsonify([m.to_dict() for m in members])
 
 
+# ============================================================
+# 初始化数据库
+# ============================================================
+def init_db(app):
+    """初始化数据库并插入示例数据"""
+    with app.app_context():
+        db.create_all()
+
+        # 检查是否已有数据
+        if User.query.first():
+            return
+
+        # 创建管理员用户
+        admin = User(
+            username='admin',
+            display_name='陈老板',
+            role='admin',
+            store_code='main',
+            phone='0912345678',
+        )
+        admin.set_password('admin123')
+        db.session.add(admin)
+
+        # 创建门店员工
+        users_data = [
+            ('manager_east', '东区店长', 'manager', 'east', '0911111111'),
+            ('manager_central', '中西区店长', 'manager', 'central', '0922222222'),
+            ('manager_north', '北区店长', 'manager', 'north', '0933333333'),
+            ('baker1', '阿旺师傅', 'baker', 'main', '0944444444'),
+            ('cashier1', '小美', 'cashier', 'east', '0955555555'),
+            ('cashier2', '阿花', 'cashier', 'central', '0966666666'),
+            ('driver1', '阿强', 'driver', 'main', '0977777777'),
+        ]
+        for username, display_name, role, store_code, phone in users_data:
+            user = User(
+                username=username,
+                display_name=display_name,
+                role=role,
+                store_code=store_code,
+                phone=phone,
+            )
+            user.set_password('123456')
+            db.session.add(user)
+
+        # 创建产品
+        products_data = [
+            ('台南红豆包', '面包', 45, 18),
+            ('奶油吐司', '面包', 60, 25),
+            ('法式长棍', '面包', 80, 30),
+            ('巧克力蛋糕', '蛋糕', 120, 50),
+            ('蛋挞', '蛋糕', 35, 15),
+            ('鲜奶泡芙', '蛋糕', 50, 22),
+            ('美式咖啡', '饮品', 40, 10),
+            ('鲜奶茶', '饮品', 55, 15),
+        ]
+        products = []
+        for name, category, price, cost in products_data:
+            product = Product(name=name, category=category, price=price, cost=cost)
+            db.session.add(product)
+            db.session.flush()
+            products.append(product)
+
+            # 初始化各门店库存
+            from src.config import Config
+            for store_code in Config.STORES:
+                stock = Stock(product_id=product.id, store_code=store_code, quantity=0)
+                db.session.add(stock)
+
+        # 创建原材料
+        materials_data = [
+            ('高筋面粉', '公斤', 50),
+            ('低筋面粉', '公斤', 30),
+            ('黄油', '公斤', 20),
+            ('糖', '公斤', 40),
+            ('鸡蛋', '个', 200),
+            ('牛奶', '升', 30),
+            ('酵母', '包', 10),
+            ('红豆馅', '公斤', 15),
+        ]
+        materials = []
+        for name, unit, min_stock in materials_data:
+            material = RawMaterial(name=name, unit=unit, min_stock=min_stock)
+            db.session.add(material)
+            db.session.flush()
+            materials.append(material)
+
+            # 初始化各门店原材料库存
+            from src.config import Config
+            for store_code in Config.STORES:
+                stock = RawMaterialStock(material_id=material.id, store_code=store_code, quantity=0)
+                db.session.add(stock)
+
+        # 创建配方（红豆包）
+        recipe_data = [
+            (products[0].id, materials[0].id, 0.2),  # 红豆包 -> 高筋面粉 0.2公斤
+            (products[0].id, materials[3].id, 0.05),  # 红豆包 -> 糖 0.05公斤
+            (products[0].id, materials[6].id, 0.01),  # 红豆包 -> 酵母 0.01包
+            (products[0].id, materials[7].id, 0.1),   # 红豆包 -> 红豆馅 0.1公斤
+            (products[1].id, materials[0].id, 0.3),   # 奶油吐司 -> 高筋面粉
+            (products[1].id, materials[2].id, 0.05),  # 奶油吐司 -> 黄油
+            (products[1].id, materials[4].id, 1),     # 奶油吐司 -> 鸡蛋 1个
+            (products[2].id, materials[0].id, 0.25),  # 法式长棍 -> 高筋面粉
+            (products[2].id, materials[6].id, 0.01),  # 法式长棍 -> 酵母
+        ]
+        for product_id, material_id, qty in recipe_data:
+            recipe = Recipe(product_id=product_id, material_id=material_id, quantity=qty)
+            db.session.add(recipe)
+
+        # 创建示例会员
+        members_data = [
+            ('0911111111', '王小明', '2026-05-15'),
+            ('0922222222', '林美丽', '2026-05-16'),
+            ('0933333333', '张大明', '2026-05-10'),
+        ]
+        for phone, name, birthday_str in members_data:
+            member = Member(
+                phone=phone,
+                name=name,
+                points=100,
+                total_spent=1000,
+                birthday=datetime.strptime(birthday_str, '%Y-%m-%d').date(),
+            )
+            db.session.add(member)
+
+        # 创建示例优惠券
+        coupon = Coupon(
+            name='满100减15',
+            coupon_type='cash',
+            condition_amount=100,
+            value=15,
+            is_active=True,
+        )
+        db.session.add(coupon)
+
+        db.session.commit()
+        print('数据库初始化完成！')
 
 
-# ── 仪表盘 UI ──
+# ============================================================
+# 主入口
+# ============================================================
+app = create_app(os.environ.get('FLASK_CONFIG', 'default'))
+
 
 if __name__ == '__main__':
-    app = create_app()
-    app.run(debug=True, host='0.0.0.0', port=5099)
+    init_db(app)
+    app.run(host='0.0.0.0', port=5000, debug=True)

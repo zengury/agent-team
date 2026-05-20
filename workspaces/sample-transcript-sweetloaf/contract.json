@@ -2,7 +2,7 @@
   "requirements": [
     {
       "id": "R001",
-      "description": "系统需自动抓取LINE和WhatsApp消息中的订单文本，无需人工手动复制粘贴到Excel",
+      "description": "系统需自动从LINE、WhatsApp消息中提取订单信息（商品、数量、特殊要求），无需人工抄录到Excel",
       "category": "订单录入",
       "priority": "must",
       "in_prd": false,
@@ -10,7 +10,7 @@
     },
     {
       "id": "R002",
-      "description": "系统需支持客户通过消息发送定制蛋糕的照片和特殊说明，并自动归档到对应订单",
+      "description": "系统需支持客户通过图片消息发送定制蛋糕照片和特殊说明，并自动关联到对应订单",
       "category": "订单录入",
       "priority": "must",
       "in_prd": false,
@@ -18,33 +18,41 @@
     },
     {
       "id": "R003",
-      "description": "系统需自动生成订单确认回复（含价格和取货时间），即时发送给客户",
+      "description": "系统需支持每日80-200单的并发处理能力，高峰时段（周末）无延迟",
       "category": "订单录入",
-      "priority": "must",
+      "priority": "should",
       "in_prd": false,
       "in_code": false
     },
     {
       "id": "R004",
-      "description": "厨房需有一个实时看板，自动显示当日所有待生产的订单，无需老板来回跑动沟通",
-      "category": "数据看板",
-      "priority": "must",
-      "in_prd": false,
-      "in_code": false
-    },
-    {
-      "id": "R005",
-      "description": "系统需支持多渠道（LINE、WhatsApp）的订单接收，覆盖当前所有客户沟通渠道",
+      "description": "客户通过LINE/WhatsApp下单后，系统需在5秒内自动回复确认信息，包含价格和取货时间",
       "category": "通知与通信",
       "priority": "must",
       "in_prd": false,
       "in_code": false
     },
     {
-      "id": "R006",
-      "description": "系统需与现有LINE Official Account集成，利用已建立的官方账号接收订单消息",
-      "category": "其他",
+      "id": "R005",
+      "description": "厨房需有一个实时更新的Web看板，自动显示当天所有待生产订单，无需老板人工传递Excel",
+      "category": "生产与库存",
       "priority": "must",
+      "in_prd": false,
+      "in_code": false
+    },
+    {
+      "id": "R006",
+      "description": "系统需在订单被遗漏或超过15分钟未处理时，自动向店员发送提醒通知",
+      "category": "通知与通信",
+      "priority": "must",
+      "in_prd": false,
+      "in_code": false
+    },
+    {
+      "id": "R007",
+      "description": "系统需接入LINE Messaging API，与现有LINE官方账号集成，无需额外注册新账号",
+      "category": "其他",
+      "priority": "should",
       "in_prd": false,
       "in_code": false
     }
@@ -54,14 +62,15 @@
       "phase": "prd",
       "coverage_pct": 0.0,
       "covered": 0,
-      "total": 6,
+      "total": 7,
       "uncovered": [
         "R001",
         "R002",
         "R003",
         "R004",
         "R005",
-        "R006"
+        "R006",
+        "R007"
       ]
     },
     {
