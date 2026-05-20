@@ -1,0 +1,55 @@
+# ── 西游工作流 v3 ──
+
+workflows:
+
+  qujing:
+    description: "完整取经：分析→PRD→开发→测试→文档→交付"
+    phases:
+      - name: "定方向"
+        agent: "tangseng"
+        action: "analyze_transcript"
+        description: "读客户对话记录，分析需求，确定方案，委派任务给徒弟"
+
+      - name: "出主意"
+        agent: "bajie"
+        action: "create_prd"
+        depends_on: ["定方向"]
+        description: "写PRD：客户业务概述、痛点分析、功能列表(MoSCoW)、验收标准。至少1500字。用write_file写入docs/PRD.md"
+
+      - name: "打头阵"
+        agent: "wukong"
+        action: "implement"
+        depends_on: ["出主意"]
+        description: "按PRD开发。必须写入src/app.py+src/models.py+src/config.py+src/requirements.txt+README.md共5个文件。用list_dir验证全部存在。用run_shell安装依赖并验证导入成功。"
+
+      - name: "守质量"
+        agent: "shaseng"
+        action: "test"
+        depends_on: ["打头阵"]
+        description: "读src/app.py理解API，写tests/test_app.py和tests/conftest.py，用pytest执行测试。如失败则修复后重跑。写入docs/TEST_REPORT.md报告结果。"
+
+      - name: "修Bug"
+        agent: "wukong"
+        action: "fix_bugs"
+        depends_on: ["守质量"]
+        description: "读TEST_REPORT.md，修复沙僧发现的问题。修改代码后用run_shell重新验证。"
+        optional: true
+
+      - name: "复测"
+        agent: "shaseng"
+        action: "retest"
+        depends_on: ["修Bug"]
+        description: "重新执行pytest验证修复。更新TEST_REPORT.md。"
+        optional: true
+
+      - name: "写经书"
+        agent: "bailongma"
+        action: "create_docs"
+        depends_on: ["打头阵"]
+        description: "读PRD和README，写docs/client/用户指南.md+部署指南.md+FAQ.md。每个至少1000字。面向非技术企业主。"
+
+      - name: "取真经"
+        agent: "tangseng"
+        action: "review_and_deliver"
+        depends_on: ["复测", "写经书"]
+        description: "审核所有产出：PRD、代码、测试、文档。确认完整、一致、可交付。输出最终交付摘要。"

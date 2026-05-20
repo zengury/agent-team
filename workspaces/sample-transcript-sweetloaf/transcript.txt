@@ -1,0 +1,58 @@
+# ── Sample Customer Transcript ──
+# SME Bakery (SweetLoaf), Tainan, Taiwan
+# Recorded: 2026-05-15
+
+[00:00] Customer (Mr. Chen, Owner): 
+We run a medium bakery with 12 staff. We have three stores and a central kitchen. 
+Our biggest problem right now is that we get lots of orders through LINE, WhatsApp, 
+and phone calls, and our staff has to manually enter everything into a spreadsheet. 
+It's causing mistakes - wrong orders, missed deliveries. I heard AI can help with this.
+
+[00:45] You: 
+Tell me more about the volume - how many orders per day?
+
+[00:50] Mr. Chen: 
+About 80-120 orders per day across all channels. Weekends can hit 200. We sell 
+bread, cakes, and custom celebration cakes. The custom cakes are the biggest 
+headache because customers send photos and special instructions.
+
+[01:15] You: 
+What does your current process look like?
+
+[01:20] Mr. Chen:
+Customer messages come in. My daughter or one of the counter staff checks the 
+phone every 15 minutes, copies the order details into our Excel sheet, then 
+sends a confirmation manually. The Excel goes to the kitchen in the morning 
+and afternoon. Sometimes a LINE message gets missed for an hour, customer gets 
+angry, we lose the order.
+
+[02:00] You: 
+What would success look like in 3 months?
+
+[02:05] Mr. Chen:
+I want the orders to just appear in our system automatically. No manual entry. 
+And I want the kitchen to know what to bake without me running back and forth. 
+Also, for custom cakes, I want the customer to get an automatic confirmation 
+with price and pickup time.
+
+[02:45] You:
+What's your budget range for a solution like this?
+
+[02:50] Mr. Chen:
+I don't know... maybe 30,000-50,000 NTD per month? I don't want to hire another 
+person, so if this costs less than a salary, I'm happy.
+
+[03:20] You:
+Do you have any existing systems? POS, website, anything?
+
+[03:25] Mr. Chen:
+We have a basic POS for in-store sales, but it doesn't connect to anything. 
+No website, just Facebook and LINE. I'm not technical - my daughter set up 
+our LINE Official Account.
+
+[03:50] You:
+OK, I think an AI order agent could help. Let me take this back to my team and 
+come back with a proposal.
+
+[03:55] Mr. Chen:
+Thank you! Please keep it simple. My staff are not technical people.

@@ -1,0 +1,28 @@
+finished_at: '2026-05-20T21:58:36.242910'
+phases:
+- agent: tangseng
+  name: "\u5B9A\u65B9\u5411"
+  status: pending
+- agent: bajie
+  name: "\u51FA\u4E3B\u610F"
+  status: pending
+- agent: wukong
+  name: "\u6253\u5934\u9635"
+  status: pending
+- agent: shaseng
+  name: "\u5B88\u8D28\u91CF"
+  status: pending
+- agent: wukong
+  name: "\u4FEEBug"
+  status: pending
+- agent: shaseng
+  name: "\u590D\u6D4B"
+  status: pending
+- agent: bailongma
+  name: "\u5199\u7ECF\u4E66"
+  status: pending
+- agent: tangseng
+  name: "\u53D6\u771F\u7ECF"
+  status: pending
+started_at: '2026-05-20T21:58:36.241403'
+workflow: qujing

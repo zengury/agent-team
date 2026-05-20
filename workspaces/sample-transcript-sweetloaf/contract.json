@@ -1,0 +1,75 @@
+{
+  "requirements": [
+    {
+      "id": "R001",
+      "description": "系统需自动抓取LINE和WhatsApp消息中的订单文本，无需人工手动复制粘贴到Excel",
+      "category": "订单录入",
+      "priority": "must",
+      "in_prd": false,
+      "in_code": false
+    },
+    {
+      "id": "R002",
+      "description": "系统需支持客户通过消息发送定制蛋糕的照片和特殊说明，并自动归档到对应订单",
+      "category": "订单录入",
+      "priority": "must",
+      "in_prd": false,
+      "in_code": false
+    },
+    {
+      "id": "R003",
+      "description": "系统需自动生成订单确认回复（含价格和取货时间），即时发送给客户",
+      "category": "订单录入",
+      "priority": "must",
+      "in_prd": false,
+      "in_code": false
+    },
+    {
+      "id": "R004",
+      "description": "厨房需有一个实时看板，自动显示当日所有待生产的订单，无需老板来回跑动沟通",
+      "category": "数据看板",
+      "priority": "must",
+      "in_prd": false,
+      "in_code": false
+    },
+    {
+      "id": "R005",
+      "description": "系统需支持多渠道（LINE、WhatsApp）的订单接收，覆盖当前所有客户沟通渠道",
+      "category": "通知与通信",
+      "priority": "must",
+      "in_prd": false,
+      "in_code": false
+    },
+    {
+      "id": "R006",
+      "description": "系统需与现有LINE Official Account集成，利用已建立的官方账号接收订单消息",
+      "category": "其他",
+      "priority": "must",
+      "in_prd": false,
+      "in_code": false
+    }
+  ],
+  "reports": [
+    {
+      "phase": "prd",
+      "coverage_pct": 0.0,
+      "covered": 0,
+      "total": 6,
+      "uncovered": [
+        "R001",
+        "R002",
+        "R003",
+        "R004",
+        "R005",
+        "R006"
+      ]
+    },
+    {
+      "phase": "code",
+      "coverage_pct": 0.0,
+      "covered": 0,
+      "total": 0,
+      "uncovered": []
+    }
+  ]
+}

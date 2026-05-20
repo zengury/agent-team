@@ -1,0 +1,4 @@
+# Workspaces — Client Projects
+
+Each subdirectory is a separate SME client project.
+Created automatically by `agent-team init <project-name>`.

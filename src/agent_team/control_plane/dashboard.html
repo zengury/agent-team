@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>西游Agent团队 · 控制面板</title>
+<style>
+/* ══════════════════════════════════════════════════════════════
+   西游Agent团队 控制面板 — Journey to the West Control Plane
+   ══════════════════════════════════════════════════════════════ */
+
+:root {
+  --bg: #0a0a14;
+  --surface: #141428;
+  --border: #2a2a40;
+  --gold: #FFD700;
+  --gold-dim: #8B7500;
+  --text: #e0e0e0;
+  --text-dim: #8888a0;
+  --tangseng: #FFD700;
+  --bajie: #FF6B9D;
+  --wukong: #FF6B35;
+  --shaseng: #4ECDC4;
+  --bailongma: #45B7D1;
+  --success: #4CAF50;
+  --warning: #FF9800;
+  --error: #f44336;
+  --active: #00E676;
+  --radius: 12px;
+  --font-cn: 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'SF Mono', 'Cascadia Code', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-cn);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Background pattern */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(255,215,0,0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 50%, rgba(255,107,53,0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 0%, rgba(69,183,209,0.03) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Header ─────────────────────────────────────────── */
+#header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(20,20,40,0.95);
+  backdrop-filter: blur(10px);
+}
+
+#header .logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#header .logo .icon {
+  font-size: 32px;
+}
+
+#header .logo h1 {
+  font-size: 20px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--gold), #FFA500);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+#header .logo .subtitle {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-left: 8px;
+}
+
+#header .controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+#header .project-name {
+  font-size: 13px;
+  color: var(--text-dim);
+  padding: 6px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+}
+
+/* ── Buttons ────────────────────────────────────────── */
+.btn {
+  padding: 8px 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-family: var(--font-cn);
+  font-size: 13px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn:hover { border-color: var(--gold); background: rgba(255,215,0,0.1); }
+.btn.primary { background: linear-gradient(135deg, #B8860B, #DAA520); border-color: var(--gold); color: #000; font-weight: 600; }
+.btn.primary:hover { background: linear-gradient(135deg, #DAA520, #FFD700); }
+.btn.danger { border-color: var(--error); color: var(--error); }
+.btn.danger:hover { background: rgba(244,67,54,0.1); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Main Grid ──────────────────────────────────────── */
+#main {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  grid-template-rows: 1fr 280px;
+  gap: 12px;
+  padding: 12px 16px;
+  height: calc(100vh - 72px);
+}
+
+/* ── Agent Graph ────────────────────────────────────── */
+#agent-graph {
+  grid-row: 1;
+  grid-column: 1;
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+#agent-graph canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ── Event Feed ─────────────────────────────────────── */
+#event-feed {
+  grid-row: 1 / 3;
+  grid-column: 2;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#event-feed .feed-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#event-feed .feed-header .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--active);
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(1.5); }
+}
+
+#events {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+#events::-webkit-scrollbar { width: 4px; }
+#events::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.event {
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  animation: slideIn 0.3s ease;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.event .emoji { font-size: 16px; flex-shrink: 0; }
+.event .msg { flex: 1; word-break: break-word; }
+
+.event.phase_start { border-left: 3px solid var(--active); background: rgba(0,230,118,0.05); }
+.event.phase_end { border-left: 3px solid var(--success); background: rgba(76,175,80,0.05); }
+.event.delegation { border-left: 3px solid var(--gold); background: rgba(255,215,0,0.05); }
+.event.agent_output { border-left: 3px solid var(--warning); background: rgba(255,152,0,0.05); }
+.event.tangseng_thought { border-left: 3px solid var(--gold); background: rgba(255,215,0,0.08); font-style: italic; }
+.event.workflow_start, .event.workflow_end { border-left: 3px solid #fff; background: rgba(255,255,255,0.05); font-weight: 600; }
+.event.project_init { border-left: 3px solid var(--bailongma); }
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Output Panel ───────────────────────────────────── */
+#output-panel {
+  grid-row: 2;
+  grid-column: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#output-panel .panel-header {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#output-panel .tabs {
+  display: flex;
+  gap: 4px;
+}
+
+#output-panel .tab {
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  transition: all 0.2s;
+}
+
+#output-panel .tab.active {
+  background: rgba(255,215,0,0.1);
+  border-color: var(--gold-dim);
+  color: var(--gold);
+}
+
+#output-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+#output-content::-webkit-scrollbar { width: 4px; }
+#output-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.placeholder {
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-style: italic;
+}
+
+/* ── Agent Nodes (rendered on canvas, but fallback CSS) ── */
+
+/* ── Workflow Selector ──────────────────────────────── */
+.workflow-select {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-cn);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* ── Toast ──────────────────────────────────────────── */
+#toast {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toast-msg {
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  animation: toastIn 0.4s ease;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  max-width: 360px;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(100px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Responsive ─────────────────────────────────────── */
+@media (max-width: 900px) {
+  #main {
+    grid-template-columns: 1fr;
+    grid-template-rows: 400px auto 250px;
+  }
+  #event-feed {
+    grid-row: 2;
+    grid-column: 1;
+    max-height: 300px;
+  }
+  #output-panel {
+    grid-row: 3;
+    grid-column: 1;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ HEADER ═══════════════ -->
+<div id="header">
+  <div class="logo">
+    <span class="icon">🏔️</span>
+    <div>
+      <h1>西游Agent团队</h1>
+      <span class="subtitle">Journey to the West · Control Plane</span>
+    </div>
+  </div>
+  <div class="controls">
+    <span class="project-name" id="project-badge">📁 未初始化</span>
+    <select class="workflow-select" id="workflow-select">
+      <option value="qujing">📿 完整取经</option>
+      <option value="tanlu">⚡ 快速探路</option>
+      <option value="xiance">🧠 军师献策</option>
+    </select>
+    <button class="btn" id="btn-init" onclick="initProject()">📁 初始化项目</button>
+    <button class="btn primary" id="btn-start" onclick="startWorkflow()">▶ 开始取经</button>
+    <button class="btn danger" id="btn-clear" onclick="clearEvents()">🗑 清空</button>
+  </div>
+</div>
+
+<!-- ═══════════════ MAIN LAYOUT ═══════════════ -->
+<div id="main">
+
+  <!-- Agent Graph Canvas -->
+  <div id="agent-graph">
+    <canvas id="graph-canvas"></canvas>
+  </div>
+
+  <!-- Event Feed -->
+  <div id="event-feed">
+    <div class="feed-header">
+      <span class="dot"></span> 实时动态
+      <span style="margin-left:auto;font-size:11px;color:var(--text-dim)" id="event-count">0 events</span>
+    </div>
+    <div id="events">
+      <div class="placeholder">等待取经队伍集结…</div>
+    </div>
+    <!-- Harness Panel -->
+    <div id="harness-mini" style="border-top:1px solid var(--border);padding:8px 12px;font-size:11px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <span style="color:var(--active);">🛡️</span>
+        <span style="font-weight:600;color:var(--text-dim);">Harness工程保障</span>
+        <span id="harness-status" style="margin-left:auto;padding:2px 8px;border-radius:4px;background:rgba(0,230,118,0.15);color:var(--active);font-size:10px;">ACTIVE</span>
+      </div>
+      <div style="display:flex;gap:12px;color:var(--text-dim);">
+        <span id="trace-info">🔍 Trace: 0 spans</span>
+        <span id="checkpoint-info">💾 CP: 0</span>
+        <span id="approval-info">⏸️ 待审核: 0</span>
+      </div>
+      <div id="approval-queue" style="margin-top:4px;"></div>
+    </div>
+  </div>
+
+  <!-- Output Panel -->
+  <div id="output-panel">
+    <div class="panel-header">
+      <span>📄 产出内容</span>
+      <div class="tabs">
+        <span class="tab active" data-agent="all" onclick="switchTab('all', this)">全部</span>
+        <span class="tab" data-agent="tangseng" onclick="switchTab('tangseng', this)">👑唐僧</span>
+        <span class="tab" data-agent="bajie" onclick="switchTab('bajie', this)">🐷八戒</span>
+        <span class="tab" data-agent="wukong" onclick="switchTab('wukong', this)">🐵悟空</span>
+        <span class="tab" data-agent="shaseng" onclick="switchTab('shaseng', this)">🐟沙僧</span>
+        <span class="tab" data-agent="bailongma" onclick="switchTab('bailongma', this)">🐉白龙马</span>
+      </div>
+    </div>
+    <div id="output-content">
+      <div class="placeholder">等待Agent产出…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast"></div>
+
+<!-- ═══════════════ SCRIPTS ═══════════════ -->
+<script>
+// ── Configuration ─────────────────────────────────────
+const AGENTS = {
+  tangseng:  { emoji: '👑', name: '唐僧', color: '#FFD700', role: '协调者·Leader', model: 'GPT-4.5', personality: '细致·情绪稳定·执着·永不放弃' },
+  bajie:     { emoji: '🐷', name: '八戒', color: '#FF6B9D', role: '产品·创意', model: 'Claude Sonnet', personality: '有品位·想法多·善于沟通' },
+  wukong:    { emoji: '🐵', name: '悟空', color: '#FF6B35', role: '核心开发·技术担当', model: 'GPT-4.7', personality: '能力最强·火眼金睛·快速执行' },
+  shaseng:   { emoji: '🐟', name: '沙僧', color: '#4ECDC4', role: '测试·质量守门人', model: 'Claude Sonnet', personality: '认真·任劳任怨·持续输出' },
+  bailongma: { emoji: '🐉', name: '白龙马', color: '#45B7D1', role: '客户成功·服务担当', model: 'GPT-4.5', personality: '最有服务态度·关心客户' },
+};
+
+const wsUrl = `ws://${window.location.host}/ws`;
+let ws = null;
+let events = [];
+let activePhases = {};  // agent_name -> phase info
+let activeTab = 'all';
+let outputs = {};  // agent_name -> latest output text
+
+// ── WebSocket Connection ──────────────────────────────
+function connectWS() {
+  ws = new WebSocket(wsUrl);
+  ws.onopen = () => {
+    console.log('✅ Control Plane 已连接');
+    showToast('✅ 控制面板已连接', 'success');
+  };
+  ws.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    handleMessage(data);
+  };
+  ws.onclose = () => {
+    console.log('🔌 连接断开，3秒后重连…');
+    showToast('🔌 连接断开，重连中…', 'warning');
+    setTimeout(connectWS, 3000);
+  };
+  ws.onerror = (e) => console.error('WebSocket error:', e);
+}
+
+function handleMessage(data) {
+  if (data.type === 'connected') {
+    loadStatus(data.status);
+    return;
+  }
+  if (data.type === 'status_update') {
+    loadStatus(data.status);
+    return;
+  }
+  if (data.type === 'chat_response') {
+    addOutput('tangseng', data.response);
+    return;
+  }
+  // It's an agent event
+  if (data.event_type) {
+    addEvent(data);
+    updateActivePhases(data);
+    drawGraph();
+  }
+}
+
+function loadStatus(status) {
+  if (status.project && status.project.project) {
+    document.getElementById('project-badge').textContent = '📁 ' + status.project.project;
+  }
+  if (status.events) {
+    status.events.forEach(e => addEvent(e, true));
+    drawGraph();
+  }
+}
+
+// ── Events ────────────────────────────────────────────
+function addEvent(evt, silent = false) {
+  events.push(evt);
+  document.getElementById('event-count').textContent = events.length + ' events';
+  
+  const container = document.getElementById('events');
+  if (container.querySelector('.placeholder')) {
+    container.innerHTML = '';
+  }
+  
+  const div = document.createElement('div');
+  div.className = 'event ' + (evt.event_type || '');
+  div.innerHTML = `<span class="emoji">${evt.agent_emoji || '🤖'}</span><span class="msg">${evt.message || JSON.stringify(evt)}</span>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  
+  // Store output
+  if (evt.event_type === 'agent_output' && evt.data && evt.data.full_output) {
+    outputs[evt.agent_name] = evt.data.full_output;
+    if (activeTab === 'all' || activeTab === evt.agent_name) {
+      showOutput(evt.agent_name, evt.data.full_output);
+    }
+  }
+  
+  // Toast for important events
+  if (!silent && ['workflow_start', 'workflow_end', 'phase_start', 'phase_end'].includes(evt.event_type)) {
+    const icon = evt.event_type === 'workflow_start' ? '🚀' :
+                 evt.event_type === 'workflow_end' ? '🏁' :
+                 evt.event_type === 'phase_start' ? '▶️' : '✅';
+    showToast(`${icon} ${evt.message}`, evt.event_type.includes('end') ? 'success' : 'info');
+  }
+}
+
+function clearEvents() {
+  events = [];
+  outputs = {};
+  activePhases = {};
+  document.getElementById('events').innerHTML = '<div class="placeholder">事件已清空</div>';
+  document.getElementById('event-count').textContent = '0 events';
+  document.getElementById('output-content').innerHTML = '<div class="placeholder">等待Agent产出…</div>';
+  fetch('/api/events/clear', { method: 'POST' });
+  drawGraph();
+}
+
+function updateActivePhases(evt) {
+  if (evt.event_type === 'phase_start') {
+    activePhases[evt.agent_name] = { phase: evt.phase_name, message: evt.message, startTime: Date.now() };
+  } else if (evt.event_type === 'phase_end') {
+    delete activePhases[evt.agent_name];
+  }
+}
+
+// ── Output Panel ──────────────────────────────────────
+function switchTab(agent, el) {
+  activeTab = agent;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  
+  const content = document.getElementById('output-content');
+  if (agent === 'all') {
+    // Show all outputs
+    const allText = Object.entries(outputs)
+      .map(([name, text]) => `\n${'='.repeat(50)}\n${AGENTS[name]?.emoji || ''} ${AGENTS[name]?.name || name}\n${'='.repeat(50)}\n\n${text}`)
+      .join('\n');
+    if (allText.trim()) {
+      content.textContent = allText;
+    } else {
+      content.innerHTML = '<div class="placeholder">等待Agent产出…</div>';
+    }
+  } else if (outputs[agent]) {
+    content.textContent = outputs[agent];
+  } else {
+    content.innerHTML = `<div class="placeholder">${AGENTS[agent]?.emoji || ''} ${AGENTS[agent]?.name || agent} 暂无产出</div>`;
+  }
+}
+
+function showOutput(agent, text) {
+  if (activeTab === 'all' || activeTab === agent) {
+    switchTab(activeTab, document.querySelector(`.tab[data-agent="${activeTab}"]`));
+  }
+}
+
+function addOutput(agent, text) {
+  outputs[agent] = text;
+  if (activeTab === 'all' || activeTab === agent) {
+    document.getElementById('output-content').textContent = text;
+  }
+}
+
+// ── Agent Graph (Canvas) ──────────────────────────────
+function drawGraph() {
+  const container = document.getElementById('agent-graph');
+  const canvas = document.getElementById('graph-canvas');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = container.getBoundingClientRect();
+  
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  
+  const W = rect.width;
+  const H = rect.height;
+  
+  // Clear
+  ctx.clearRect(0, 0, W, H);
+  
+  // Draw subtle grid
+  ctx.strokeStyle = 'rgba(42,42,64,0.3)';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x < W; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y < H; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  
+  // Node positions
+  const centerX = W / 2;
+  const topY = H * 0.22;
+  const bottomY = H * 0.72;
+  
+  const tangsengPos = { x: centerX, y: topY };
+  
+  const discipleNames = ['bajie', 'wukong', 'shaseng', 'bailongma'];
+  const disciplePositions = {};
+  const spacing = W / (discipleNames.length + 1);
+  
+  discipleNames.forEach((name, i) => {
+    disciplePositions[name] = { x: spacing * (i + 1), y: bottomY };
+  });
+  
+  // Draw delegation arrows (Tangseng -> disciples)
+  discipleNames.forEach(name => {
+    const dPos = disciplePositions[name];
+    const isActive = !!activePhases[name];
+    
+    ctx.beginPath();
+    ctx.moveTo(tangsengPos.x, tangsengPos.y + 40);
+    
+    // Curved paths
+    const cpX = (tangsengPos.x + dPos.x) / 2;
+    const cpY = (tangsengPos.y + dPos.y) / 2;
+    ctx.quadraticCurveTo(cpX, cpY, dPos.x, dPos.y - 40);
+    
+    ctx.strokeStyle = isActive ? AGENTS[name].color : 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = isActive ? 2 : 1;
+    if (isActive) {
+      ctx.setLineDash([8, 4]);
+      ctx.lineDashOffset = Date.now() / 100 % 12;
+    } else {
+      ctx.setLineDash([]);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    // Animated dots on active connections
+    if (isActive) {
+      const t = (Date.now() / 2000) % 1;
+      const dotX = tangsengPos.x + (dPos.x - tangsengPos.x) * t;
+      const dotY = tangsengPos.y + 40 + (dPos.y - 40 - tangsengPos.y - 40) * t + 
+                   (Math.sin(t * Math.PI) * 30);
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
+      ctx.fillStyle = AGENTS[name].color;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, 8, 0, Math.PI * 2);
+      ctx.fillStyle = AGENTS[name].color + '33';
+      ctx.fill();
+    }
+  });
+  
+  // Draw TangSeng node
+  drawAgentNode(ctx, tangsengPos.x, tangsengPos.y, 'tangseng', true);
+  
+  // Draw disciple nodes
+  discipleNames.forEach(name => {
+    const pos = disciplePositions[name];
+    drawAgentNode(ctx, pos.x, pos.y, name, false);
+  });
+  
+  // Title
+  ctx.fillStyle = 'rgba(255,255,255,0.04)';
+  ctx.font = 'bold 48px "PingFang SC", "Microsoft YaHei", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('西 游', centerX, H * 0.94);
+}
+
+function drawAgentNode(ctx, x, y, agentKey, isLeader) {
+  const cfg = AGENTS[agentKey];
+  const isActive = !!activePhases[agentKey];
+  const radius = isLeader ? 50 : 42;
+  const pulsePhase = (Date.now() / 1500) % 1;
+  
+  // Active glow
+  if (isActive) {
+    const glowRadius = radius + 10 + Math.sin(pulsePhase * Math.PI * 2) * 6;
+    const gradient = ctx.createRadialGradient(x, y, radius, x, y, glowRadius);
+    gradient.addColorStop(0, cfg.color + '66');
+    gradient.addColorStop(1, 'transparent');
+    ctx.beginPath();
+    ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+  }
+  
+  // Shadow
+  ctx.beginPath();
+  ctx.arc(x, y + 2, radius, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fill();
+  
+  // Main circle
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  const bgGrad = ctx.createLinearGradient(x, y - radius, x, y + radius);
+  bgGrad.addColorStop(0, cfg.color + '22');
+  bgGrad.addColorStop(0.5, cfg.color + '0D');
+  bgGrad.addColorStop(1, cfg.color + '22');
+  ctx.fillStyle = bgGrad;
+  ctx.fill();
+  ctx.strokeStyle = isActive ? cfg.color : cfg.color + '44';
+  ctx.lineWidth = isActive ? 2.5 : 1.5;
+  ctx.stroke();
+  
+  // Inner ring (for leader)
+  if (isLeader) {
+    ctx.beginPath();
+    ctx.arc(x, y, radius - 4, 0, Math.PI * 2);
+    ctx.strokeStyle = cfg.color + '55';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  
+  // Crown for leader
+  if (isLeader) {
+    ctx.fillStyle = cfg.color;
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('👑', x, y - radius - 8);
+  }
+  
+  // Emoji
+  ctx.font = `${isLeader ? 32 : 26}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(cfg.emoji, x, y - 2);
+  
+  // Name label
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${isLeader ? 14 : 12}px "PingFang SC", "Microsoft YaHei", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText(cfg.name, x, y + radius + 16);
+  
+  // Role label
+  ctx.fillStyle = cfg.color;
+  ctx.font = '10px "PingFang SC", "Microsoft YaHei", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(cfg.role, x, y + radius + 30);
+  
+  // Active indicator
+  if (isActive) {
+    const phase = activePhases[agentKey];
+    ctx.fillStyle = cfg.color;
+    ctx.font = 'bold 10px "PingFang SC", "Microsoft YaHei", sans-serif';
+    const statusText = phase.phase || '工作中…';
+    
+    // Status badge
+    const textWidth = ctx.measureText(statusText).width + 12;
+    const badgeY = y - radius - 18;
+    ctx.beginPath();
+    ctx.roundRect(x - textWidth/2, badgeY - 9, textWidth, 18, 9);
+    ctx.fillStyle = cfg.color + '33';
+    ctx.fill();
+    ctx.strokeStyle = cfg.color;
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(statusText, x, badgeY + 3);
+  }
+  
+  // Model badge (bottom)
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.font = '9px "SF Mono", monospace';
+  ctx.fillText(cfg.model, x, y + radius + 42);
+}
+
+// Animation loop
+function animate() {
+  drawGraph();
+  requestAnimationFrame(animate);
+}
+
+// ── API Calls ─────────────────────────────────────────
+async function initProject() {
+  const name = prompt('项目名称（例如: sweetloaf-bakery）:', 'demo-client');
+  if (!name) return;
+  
+  const transcript = prompt('粘贴客户对话记录（可选）:', '');
+  
+  try {
+    const resp = await fetch('/api/project/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, transcript }),
+    });
+    const data = await resp.json();
+    document.getElementById('project-badge').textContent = '📁 ' + name;
+    showToast('✅ 项目已初始化: ' + name, 'success');
+    
+    // Also via WS for real-time
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ command: 'init_project', name, transcript }));
+    }
+  } catch (e) {
+    showToast('❌ 初始化失败: ' + e.message, 'error');
+  }
+}
+
+async function startWorkflow() {
+  const wf = document.getElementById('workflow-select').value;
+  const btn = document.getElementById('btn-start');
+  btn.disabled = true;
+  btn.textContent = '⏳ 取经中…';
+  
+  try {
+    const resp = await fetch('/api/workflow/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow: wf }),
+    });
+    const data = await resp.json();
+    if (data.error) {
+      showToast('❌ ' + data.error, 'error');
+      btn.disabled = false;
+      btn.textContent = '▶ 开始取经';
+    } else {
+      showToast('🚀 取经开始！工作流: ' + wf, 'success');
+      // Button stays disabled until workflow completes (listening for workflow_end event)
+    }
+  } catch (e) {
+    showToast('❌ 启动失败: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '▶ 开始取经';
+  }
+}
+
+// Listen for workflow end to re-enable button
+const origAddEvent = addEvent;
+addEvent = function(evt, silent) {
+  origAddEvent(evt, silent);
+  if (evt.event_type === 'workflow_end') {
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-start').textContent = '▶ 开始取经';
+  }
+};
+
+// ── Toast ─────────────────────────────────────────────
+function showToast(msg, type = 'info') {
+  const container = document.getElementById('toast');
+  const div = document.createElement('div');
+  div.className = 'toast-msg';
+  div.style.borderLeftColor = type === 'success' ? 'var(--success)' :
+                               type === 'error' ? 'var(--error)' :
+                               type === 'warning' ? 'var(--warning)' : 'var(--gold)';
+  div.textContent = msg;
+  container.appendChild(div);
+  setTimeout(() => { div.style.opacity = '0'; div.style.transition = 'opacity 0.3s'; }, 4000);
+  setTimeout(() => div.remove(), 4500);
+}
+
+// ── Init ──────────────────────────────────────────────
+window.addEventListener('load', () => {
+  connectWS();
+  animate();
+  startHarnessPolling();
+});
+
+window.addEventListener('resize', () => {
+  drawGraph();
+});
+
+// Handle workflow_end events to re-enable button
+document.addEventListener('workflow-complete', () => {
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-start').textContent = '▶ 开始取经';
+});
+
+// ── Harness Polling ───────────────────────────────────
+let harnessInterval = null;
+
+function startHarnessPolling() {
+  harnessInterval = setInterval(pollHarness, 3000);
+  pollHarness();
+}
+
+async function pollHarness() {
+  try {
+    // Trace
+    const traceResp = await fetch('/api/harness/trace');
+    const traceData = await traceResp.json();
+    if (traceData.summary) {
+      document.getElementById('trace-info').textContent =
+        `🔍 Trace: ${traceData.summary.total_spans || 0} spans | ${(traceData.summary.total_duration_ms || 0).toFixed(0)}ms`;
+    }
+    
+    // Checkpoints
+    const cpResp = await fetch('/api/harness/checkpoints');
+    const cpData = await cpResp.json();
+    if (cpData.total !== undefined) {
+      document.getElementById('checkpoint-info').textContent =
+        `💾 CP: ${cpData.checkpoints || 0} | ${cpData.completed || 0}/${cpData.total}`;
+    }
+    
+    // Approvals
+    const appResp = await fetch('/api/harness/approvals');
+    const approvals = await appResp.json();
+    document.getElementById('approval-info').textContent =
+      `⏸️ 待审核: ${approvals.length}`;
+    
+    const queue = document.getElementById('approval-queue');
+    if (approvals.length > 0) {
+      queue.innerHTML = approvals.map(a => `
+        <div style="padding:6px 8px;margin:2px 0;background:rgba(255,152,0,0.1);border:1px solid rgba(255,152,0,0.3);border-radius:4px;font-size:10px;">
+          <strong>${a.phase}</strong> (${a.agent})
+          <div style="color:var(--text-dim);margin:2px 0;">${a.description}</div>
+          <div style="display:flex;gap:4px;margin-top:4px;">
+            <button onclick="approvePhase('${a.request_id}')" style="padding:2px 8px;border:1px solid var(--success);border-radius:3px;background:rgba(76,175,80,0.15);color:var(--success);cursor:pointer;font-size:10px;">✅ 通过</button>
+            <button onclick="rejectPhase('${a.request_id}')" style="padding:2px 8px;border:1px solid var(--error);border-radius:3px;background:rgba(244,67,54,0.15);color:var(--error);cursor:pointer;font-size:10px;">❌ 驳回</button>
+          </div>
+        </div>
+      `).join('');
+    } else {
+      queue.innerHTML = '';
+    }
+  } catch(e) {
+    // Silently fail - harness endpoints may not be available
+  }
+}
+
+async function approvePhase(requestId) {
+  try {
+    await fetch('/api/harness/approve', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({request_id: requestId, note: '师父批准'})
+    });
+    showToast('✅ 审核已通过', 'success');
+    pollHarness();
+  } catch(e) {
+    showToast('❌ 操作失败', 'error');
+  }
+}
+
+async function rejectPhase(requestId) {
+  const reason = prompt('驳回理由:');
+  if (!reason) return;
+  try {
+    await fetch('/api/harness/reject', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({request_id: requestId, reason})
+    });
+    showToast('❌ 已驳回', 'warning');
+    pollHarness();
+  } catch(e) {
+    showToast('❌ 操作失败', 'error');
+  }
+}
+</script>
+
+</body>
+</html>

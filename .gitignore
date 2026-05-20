@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+workspaces/*/src/
+workspaces/*/tests/
+workspaces/*/.workflow_state/
+workspaces/*/*.db
+.env
+.DS_Store
+*.log
