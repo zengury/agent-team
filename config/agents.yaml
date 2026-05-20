@@ -9,7 +9,7 @@ tangseng:
   name: "唐僧"
   emoji: "👑"
   role: "团队Leader · 协调者"
-  model: "deepseek-chat"
+  model: "deepseek-reasoner"
   provider: "deepseek"
   temperature: 0.4
   max_tokens: 8192
@@ -40,7 +40,7 @@ bajie:
   name: "八戒"
   emoji: "🐷"
   role: "产品经理"
-  model: "deepseek-chat"
+  model: "deepseek-reasoner"
   provider: "deepseek"
   temperature: 0.6
   max_tokens: 4096
@@ -66,7 +66,7 @@ wukong:
   name: "悟空"
   emoji: "🐵"
   role: "核心开发者"
-  model: "deepseek-chat"
+  model: "deepseek-reasoner"
   provider: "deepseek"
   temperature: 0.2
   max_tokens: 16384
@@ -107,7 +107,7 @@ shaseng:
   name: "沙僧"
   emoji: "🐟"
   role: "测试工程师"
-  model: "deepseek-chat"
+  model: "deepseek-reasoner"
   provider: "deepseek"
   temperature: 0.3
   max_tokens: 8192
@@ -145,7 +145,7 @@ bailongma:
   name: "白龙马"
   emoji: "🐉"
   role: "客户成功"
-  model: "deepseek-chat"
+  model: "deepseek-reasoner"
   provider: "deepseek"
   temperature: 0.5
   max_tokens: 4096
