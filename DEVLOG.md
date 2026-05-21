@@ -1,75 +1,73 @@
-# DevLog — 2026-05-20/21
+# DevLog — deepseek-chat vs deepseek-v4-pro 对比 + 两次执行差异
 
-## 构建了西游Agent团队 — 五AI Agent交付系统
+## 一、模型对比
 
-### 1. 团队设计
+| | deepseek-chat (V3) | deepseek-v4-pro |
+|---|---|---|
+| 类型 | 标准对话模型 | 推理模型(chain-of-thought) |
+| 速度 | 每个请求 2-10s | 每个请求 20-60s |
+| 输出 | 直接回答 | 先 internal reasoning → 再回答 |
+| API 格式 | 标准 chat completions | 额外 `reasoning_content` 字段 |
+| 工具调用 | 稳定 | 需回传 reasoning_content |
+| 取经耗时 | **9分钟** | 卡死在定方向(估计 30min+) |
+| 适用场景 | 多轮工具调用 | 单轮深度分析 |
 
-| Agent | 角色 | 模型 | 性格 |
-|-------|------|------|------|
-| 👑 唐僧 | CEO/协调者 | deepseek-chat | 细致·情绪稳定·执着·永不放弃 |
-| 🐷 八戒 | 产品经理 | deepseek-chat | 有品位·想法多·善于沟通 |
-| 🐵 悟空 | 核心开发者 | deepseek-chat | 能力最强·火眼金睛·快速执行 |
-| 🐟 沙僧 | 测试工程师 | deepseek-chat | 认真·任劳任怨·持续输出 |
-| 🐉 白龙马 | 客户成功 | deepseek-chat | 最有服务态度·关心客户 |
+**结论**: 工具调用循环场景用 chat，深度分析场景用 v4-pro。系统已兼容两者，只需改 `config/agents.yaml` 一行。
 
-### 2. 技术架构
+## 二、两次完整取经对比
+
+| 维度 | 第一次 (老key) `631e1ff` | 第二次 (pi的key) `a1ab921` |
+|---|---|---|
+| **commit** | 631e1ff | a1ab921 |
+| **API key** | `sk-` (已过期) | `sk-39f669...` (pi的key) |
+| **app.py** | 36KB | **42KB (+17%)** |
+| **models.py** | 26KB | 18KB |
+| **test_app.py** | ✅ 11KB | ❌ 缺失 |
+| **conftest.py** | ✅ 5.4KB | ✅ 3.7KB |
+| **PRD.md** | ✅ 14KB | ✅ 13KB |
+| **用户指南** | ✅ 13KB | ✅ 14KB |
+| **部署指南** | ✅ 11KB | ✅ 15KB |
+| **FAQ.md** | ✅ 13KB | ✅ **16KB** |
+| **README.md** | ✅ 4KB | ✅ 3.3KB |
+| **IMPLEMENTATION.md** | ✅ 507B | ✅ 527B |
+| **POST 端点** | 10 | **15 (+50%)** |
+| **总文件数** | 15 | 13 |
+
+### 核心差异
 
 ```
-src/agent_team/
-├── orchestrator.py    — 编排引擎 + 事件系统 + 状态机
-├── agents/            — 五个Agent实现 (支持Function Calling)
-├── llm/               — DeepSeek/Anthropic/OpenAI 三后端
-├── control_plane/     — FastAPI + WebSocket 实时控制面板
-├── harness/           — 工程保障层
-│   ├── guardrails.py  — 输入/输出/工具调用校验
-│   ├── tracing.py     — Span追踪 + JSON导出
-│   ├── handoffs.py    — Agent间交接过滤
-│   ├── state_machine.py — 可恢复/可重放状态机(16个checkpoint)
-│   ├── human_loop.py  — 审核/暂停/恢复
-│   └── contract.py    — 需求契约验证(需求→PRD→代码覆盖)
-└── tools/
-    └── registry.py    — 工具注册表(read_file/write_file/list_dir/run_shell)
+v3 (老key):    代码更强 (26KB models, test_app.py 存在)
+v3+ (pi的key): 文档更全 (FAQ 16KB, 部署指南 15KB, POST 多50%)
 ```
 
-### 3. 端到端交付验证 — SweetLoaf 面包店
+**随机性**: test_app.py 在两次运行中一次有、一次无——LLM 的非确定性。需要后续加后验证层（文件完整性检查）。
 
-客户: 台南 SweetLoaf 烘焙坊，3家门店，12人
-需求: LINE/WhatsApp 订单自动录入，消除手动 Excel 抄单
+## 三、契约验证现状
 
-**工作流**: 唐僧分析 → 八戒PRD → 悟空开发 → 沙僧测试 → 白龙马文档 → 唐僧交付
+两次运行契约覆盖率都显示 0%——不是没覆盖，是关键词匹配太严。
 
-**产出**:
-- 36KB Flask应用，27个API端点 (GET/POST/PUT)
-- 11个数据模型 (Store/Product/Order/Inventory/Member...)
-- 16个测试用例 (pytest)
-- 15KB PRD + 用户指南 + 部署指南 + FAQ
-- 需求契约验证: LLM提取6条需求，自动检测PRD/代码覆盖
+实际覆盖情况:
+- R001-R004 (订单录入): PRD 提到了"新建订单"，但没提"LINE自动抓取"
+- R005 (厨房看板): PRD 有所涉及
+- R006 (漏单提醒): 未覆盖
+- R007 (LINE API集成): PRD 提到但代码无实际集成
 
-**耗时**: 9分40秒
+**契约验证的提取层准确（LLM提取了7条真实需求），比对层需要改进。**
 
-### 4. 关键发现
+## 四、推理模型适配记录
 
-**需求传递衰减问题**:
-- 客户反复说"LINE自动接单"，但八戒PRD漏掉了这个核心需求
-- 悟空按PRD做，也没有订单录入功能
-- 后来加了需求契约验证层(contract.py)，用LLM提取需求→验证PRD覆盖→自动触发修复
+为支持 deepseek-v4-pro 做了以下改动:
+1. LLMResponse 增加 `reasoning_content` 字段
+2. DeepSeek provider: 用 `getattr` 安全获取 reasoning_content
+3. BaseAgent: 工具调用消息中回传 reasoning_content
+4. max_tokens 提升到 16K
 
-**LLM Function Calling稳定性**:
-- DeepSeek 的 tool call JSON 有概率格式错误（中文内容/引号转义）
-- 加了 regex 修复 + 降级策略
+问题: v4-pro 的工具调用需要将 reasoning_content 原样回传，否则 400 错误。已修复。
 
-**真实代码 vs 文字方案**:
-- v1(无工具): 产出38KB "实现方案描述"
-- v3(有工具+契约): 产出可运行的 Flask 应用 + 测试 + 文档
+## 五、基础设施
 
-### 5. 待解决
-
-- [ ] LINE Bot 对接（需要外部API，纯代码生成做不到）
-- [ ] 测试未实际执行（pytest 跑在了空数据库上）
-- [ ] FAQ.md 生成不稳定（随机丢失）
-- [ ] app.py 的 `today` 变量未定义 bug（LLM 写代码的典型问题）
-- [ ] 控制面板与 CLI 共享状态（目前两个独立进程）
-
-### 6. Git
-
-https://github.com/zengury/agent-team/tree/agent-team
+- **HTTPS push 被墙** → 改用 SSH: `git push git@github.com:zengury/agent-team.git`
+- **仓库**: github.com/zengury/agent-team (agent-team 分支)
+- **镜像**: github.com/zengury/teamup (agent-team 分支)
+- **Control Plane**: http://localhost:8866
+- **SweetLoaf 演示**: http://localhost:5099/dashboard
